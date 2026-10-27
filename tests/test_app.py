@@ -14,7 +14,12 @@ class HackJudgeTests(unittest.TestCase):
         self.client = hj.app.test_client()
 
     def tearDown(self):
-        self.tmp.cleanup()
+        import gc
+        gc.collect()
+        try:
+            self.tmp.cleanup()
+        except PermissionError:
+            pass
 
     def test_health_and_empty_list(self):
         self.assertEqual(self.client.get('/api/health').status_code, 200)
@@ -41,6 +46,14 @@ class HackJudgeTests(unittest.TestCase):
         self.assertEqual(good.json['score'], 82.5)
         detail = self.client.get(f'/api/submissions/{sid}').json
         self.assertEqual(detail['audit_log'][0]['action'], 'score_override')
+
+    def test_delete_hackathon(self):
+        h = self.client.post('/api/hackathons', json={"name":"ToDelete", "criteria":[{"name":"Build","description":"Quality","weight":100}]}).json
+        hid = h['id']
+        del_resp = self.client.delete(f'/api/hackathons/{hid}')
+        self.assertEqual(del_resp.status_code, 200)
+        get_resp = self.client.get(f'/api/hackathons/{hid}')
+        self.assertEqual(get_resp.status_code, 404)
 
     def test_github_url_validation(self):
         with self.assertRaises(ValueError):

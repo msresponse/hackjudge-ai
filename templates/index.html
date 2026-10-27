@@ -1,54 +1,310 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>HackJudge AI — Evidence-led hackathon judging</title>
+  <meta name="description" content="HackJudge AI: Automated, evidence-led hackathon project evaluation powered by AI.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="/"><span class="brand-mark">HJ</span><span>HackJudge <em>AI</em><small>JUDGING WORKSPACE</small></span></a>
+      <a class="brand" href="/">
+        <div class="brand-mark">HJ</div>
+        <div class="brand-text"><span>HackJudge</span><em>AI</em><small>JUDGING WORKSPACE</small></div>
+      </a>
       <div class="side-label">WORKSPACE</div>
-      <button class="nav-item active" data-view="overview"><span>▦</span> Overview</button>
-      <button class="nav-item" data-view="organizer"><span>＋</span> Create hackathon</button>
-      <button class="nav-item" data-view="submit"><span>↗</span> Submit a project</button>
-      <div class="sidebar-bottom"><div class="status-dot"></div><div><b id="ai-status">Checking AI setup…</b><small id="ai-detail">Local workspace</small></div></div>
+      <button class="nav-item active" data-view="overview" id="nav-overview">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" data-view="organizer" id="nav-organizer">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Create hackathon
+      </button>
+      <button class="nav-item" data-view="submit" id="nav-submit">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H7M17 7v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Submit a project
+      </button>
+      <button class="nav-item" data-view="batch" id="nav-batch">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15 17l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Batch CSV evaluate
+      </button>
+      <div class="sidebar-bottom">
+        <div class="status-dot" id="status-dot"></div>
+        <div><b id="ai-status">Checking AI...</b><small id="ai-detail">Local workspace</small></div>
+      </div>
     </aside>
     <main class="main-area">
-      <header class="topbar"><div><div class="eyebrow">HACKATHON OPERATIONS / <span id="crumb">OVERVIEW</span></div><h1 id="page-title">Judging overview</h1></div><div class="topbar-right"><span class="live-pill"><i></i> LOCAL WORKSPACE</span><button class="button button-primary" id="top-create">＋ New hackathon</button></div></header>
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">HACKATHON OPS / <span id="crumb">OVERVIEW</span></div>
+          <h1 id="page-title">Judging overview</h1>
+        </div>
+        <div class="topbar-right">
+          <span class="live-pill"><i></i> LOCAL WORKSPACE</span>
+          <button class="button button-primary" id="top-create">+ New hackathon</button>
+        </div>
+      </header>
       <div id="toast" class="toast hidden"></div>
 
+      <!-- OVERVIEW -->
       <section class="view" id="view-overview">
-        <div class="hero-panel"><div class="hero-copy"><div class="eyebrow light">EVIDENCE FIRST. HUMANS IN CONTROL.</div><h2>Better decisions.<br><span>Less guesswork.</span></h2><p>Turn public GitHub repositories into evidence-led reviews, apply the organiser's rubric consistently, and keep every human override accountable.</p><div class="hero-actions"><button class="button button-light" data-go="organizer">Create a hackathon <span>→</span></button><button class="button button-ghost" data-go="submit">Evaluate a project</button></div></div><div class="hero-visual"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="core-mark">HJ<span>AI</span></div><div class="float-card card-top"><span class="tiny-icon purple">⌘</span><div><b>Evidence collected</b><small>Repository signals</small></div><strong>↗</strong></div><div class="float-card card-bottom"><span class="tiny-icon green">✓</span><div><b>Human review ready</b><small>Scores · rationale · audit</small></div></div></div></div>
-        <div class="stats-grid"><div class="stat-card"><div class="stat-label">ACTIVE HACKATHONS <span>↗</span></div><div class="stat-value" id="stat-hackathons">0</div><div class="stat-foot">Rubrics ready to evaluate</div></div><div class="stat-card"><div class="stat-label">PROJECTS REVIEWED <span>⌁</span></div><div class="stat-value" id="stat-submissions">0</div><div class="stat-foot">Across all hackathons</div></div><div class="stat-card"><div class="stat-label">HUMAN OVERRIDES <span>◎</span></div><div class="stat-value" id="stat-overrides">0</div><div class="stat-foot">Recorded in the audit trail</div></div><div class="stat-card"><div class="stat-label">ASSESSMENT MODE <span>✳</span></div><div class="stat-value stat-mode" id="stat-mode">Baseline</div><div class="stat-foot" id="stat-mode-foot">Configure a model for semantic review</div></div></div>
-        <div class="section-heading"><div><div class="eyebrow">YOUR PROGRAMS</div><h3>Hackathons</h3></div><span class="muted" id="hackathon-count">0 programs</span></div>
+        <div class="hero-panel">
+          <div class="hero-copy">
+            <div class="eyebrow light">EVIDENCE FIRST. HUMANS IN CONTROL.</div>
+            <h2>Better decisions.<br><span>Less guesswork.</span></h2>
+            <p>Turn public GitHub repositories into evidence-led reviews, apply the organiser's rubric consistently, and keep every human override accountable.</p>
+            <div class="hero-actions">
+              <button class="button button-light" data-go="organizer">Create a hackathon <span>&#8594;</span></button>
+              <button class="button button-ghost" data-go="batch">Batch CSV evaluate</button>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
+            <div class="core-mark">HJ<span>AI</span></div>
+            <div class="float-card card-top"><span class="tiny-icon purple">&#8984;</span><div><b>Evidence collected</b><small>Repository signals</small></div><strong>&#8599;</strong></div>
+            <div class="float-card card-bottom"><span class="tiny-icon green">&#10003;</span><div><b>Human review ready</b><small>Scores &middot; rationale &middot; audit</small></div></div>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">ACTIVE HACKATHONS <span>&#8599;</span></div><div class="stat-value" id="stat-hackathons">0</div><div class="stat-foot">Rubrics ready to evaluate</div></div>
+          <div class="stat-card"><div class="stat-label">PROJECTS REVIEWED <span>&#8961;</span></div><div class="stat-value" id="stat-submissions">0</div><div class="stat-foot">Across all hackathons</div></div>
+          <div class="stat-card"><div class="stat-label">HUMAN OVERRIDES <span>&#9678;</span></div><div class="stat-value" id="stat-overrides">0</div><div class="stat-foot">Recorded in the audit trail</div></div>
+          <div class="stat-card"><div class="stat-label">ASSESSMENT MODE <span>&#10035;</span></div><div class="stat-value stat-mode" id="stat-mode">Baseline</div><div class="stat-foot" id="stat-mode-foot">Configure a model for semantic review</div></div>
+        </div>
+        <div class="section-heading">
+          <div><div class="eyebrow">YOUR PROGRAMS</div><h3>Hackathons</h3></div>
+          <span class="muted" id="hackathon-count">0 programs</span>
+        </div>
         <div id="hackathon-list" class="hackathon-grid"></div>
-        <div id="empty-hackathons" class="empty-state"><div class="empty-icon">✳</div><h3>Your judging workspace starts here</h3><p>Create a hackathon, set the rubric and share its submission ID with participants.</p><button class="button button-primary" data-go="organizer">Create your first hackathon</button></div>
+        <div id="empty-hackathons" class="empty-state">
+          <div class="empty-icon">&#10035;</div>
+          <h3>Your judging workspace starts here</h3>
+          <p>Create a hackathon, set the rubric and share its submission ID with participants.</p>
+          <button class="button button-primary" data-go="organizer">Create your first hackathon</button>
+        </div>
       </section>
 
+      <!-- CREATE HACKATHON -->
       <section class="view hidden" id="view-organizer">
-        <div class="form-layout"><div class="form-main panel"><div class="panel-heading"><div><div class="eyebrow">01 / PROGRAM SETUP</div><h3>Define the judging brief</h3><p>Each criterion gets a weight. All weights must add up to 100%.</p></div><span class="step-badge">01</span></div>
-          <form id="create-form"><label>Hackathon name <input id="hack-name" required maxlength="120" placeholder="e.g. AWS Agentic Build Sprint"></label><div class="two-col"><label>Track <select id="hack-track"><option>Open Innovation</option><option>AWS / Cloud</option><option>Agentic AI</option><option>Developer Tools</option><option>Climate & Sustainability</option><option>Social Impact</option></select></label><label>Short description <input id="hack-description" maxlength="300" placeholder="What are teams building? (optional)"></label></div>
-          <div class="rubric-heading"><div><h4>Evaluation rubric</h4><p>Customise the criteria and their importance.</p></div><span class="weight-chip" id="weight-total">100% total</span></div><div id="criteria-editor"></div><button type="button" class="button button-secondary add-criterion" id="add-criterion">＋ Add criterion</button>
-          <label class="requirements-label">Mandatory requirements <span class="optional">OPTIONAL · ONE PER LINE</span><textarea id="requirements" rows="4" placeholder="Example: Must include a working AWS service integration&#10;Must provide a public GitHub repository"></textarea><small>AI will mark these as verified, not verified, or not met based on available evidence. Missing evidence is not automatically proof of failure.</small></label>
-          <div class="form-footer"><span class="muted">You can edit the rubric before sharing the ID.</span><button class="button button-primary" type="submit" id="create-submit">Create hackathon <span>→</span></button></div></form></div>
-          <aside class="rubric-preview panel"><div class="eyebrow">LIVE PREVIEW</div><h3>Your scoring model</h3><p>Scores are normalised to 100 points from 0–10 criterion scores.</p><div id="rubric-bars" class="rubric-bars"></div><div class="preview-note"><span>✦</span><div><b>Evidence-backed assessment</b><small>Every score should have a rationale. Judges can override the final score with a reason.</small></div></div></aside></div>
+        <div class="form-layout">
+          <div class="form-main panel">
+            <div class="panel-heading">
+              <div><div class="eyebrow">01 / PROGRAM SETUP</div><h3>Define the judging brief</h3><p>Each criterion gets a weight. All weights must add up to 100%.</p></div>
+              <span class="step-badge">01</span>
+            </div>
+            <form id="create-form">
+              <label>Hackathon name <input id="hack-name" required maxlength="120" placeholder="e.g. AWS Agentic Build Sprint"></label>
+              <div class="two-col">
+                <label>Track <select id="hack-track"><option>Open Innovation</option><option>AWS / Cloud</option><option>Agentic AI</option><option>Developer Tools</option><option>Climate &amp; Sustainability</option><option>Social Impact</option></select></label>
+                <label>Short description <input id="hack-description" maxlength="300" placeholder="What are teams building? (optional)"></label>
+              </div>
+              <div class="rubric-heading">
+                <div><h4>Evaluation rubric</h4><p>Customise the criteria and their importance.</p></div>
+                <span class="weight-chip" id="weight-total">100% total</span>
+              </div>
+              <div id="criteria-editor"></div>
+              <button type="button" class="button button-secondary add-criterion" id="add-criterion">+ Add criterion</button>
+              <label class="requirements-label">Mandatory requirements <span class="optional">OPTIONAL &middot; ONE PER LINE</span>
+                <textarea id="requirements" rows="4" placeholder="Example: Must include a working AWS service integration&#10;Must provide a public GitHub repository"></textarea>
+                <small>AI will mark these as verified, not verified, or not met based on available evidence.</small>
+              </label>
+              <div class="form-footer">
+                <span class="muted">You can edit the rubric before sharing the ID.</span>
+                <button class="button button-primary" type="submit" id="create-submit">Create hackathon <span>&#8594;</span></button>
+              </div>
+            </form>
+          </div>
+          <aside class="rubric-preview panel">
+            <div class="eyebrow">LIVE PREVIEW</div><h3>Your scoring model</h3>
+            <p>Scores are normalised to 100 points from 0&#8211;10 criterion scores.</p>
+            <div id="rubric-bars" class="rubric-bars"></div>
+            <div class="preview-note"><span>&#10022;</span><div><b>Evidence-backed assessment</b><small>Every score should have a rationale. Judges can override the final score with a reason.</small></div></div>
+          </aside>
+        </div>
       </section>
 
+      <!-- SUBMIT A PROJECT -->
       <section class="view hidden" id="view-submit">
-        <div class="submit-layout"><div class="panel submit-form-panel"><div class="panel-heading"><div><div class="eyebrow">02 / SUBMISSION INTAKE</div><h3>Evaluate a project</h3><p>Paste the repository URL. A live demo is optional.</p></div><span class="step-badge">02</span></div><form id="submission-form"><label>Hackathon <select id="submission-hackathon" required><option value="">Select a hackathon…</option></select></label><div class="two-col"><label>Team name <input id="team-name" required maxlength="120" placeholder="e.g. Cloud Pioneers"></label><label>Project name <input id="project-name" required maxlength="120" placeholder="e.g. CostPilot"></label></div><label>GitHub repository URL <input id="github-url" required type="url" placeholder="https://github.com/owner/repository"><small>Public repositories work without a token. Private repositories need an appropriately scoped GitHub token.</small></label><label>Live demo URL <input id="demo-url" type="url" placeholder="https://your-project.example (optional)"><small>Only public HTTP/HTTPS pages on standard ports are checked. This checks reachability and visible text, not interactive correctness.</small></label><label>What should judges know? <textarea id="submission-notes" rows="3" maxlength="2000" placeholder="Briefly describe the problem, your approach, and anything that is difficult to infer from the repo."></textarea></label><div class="safety-note"><span>◈</span><p><b>Safe-by-design review.</b> Repository code is read as evidence and is never executed. Submission notes and repo contents are treated as untrusted input.</p></div><button class="button button-primary full-width" type="submit" id="evaluate-submit">Collect evidence & evaluate <span>→</span></button><p class="form-footnote">Evaluation can take a few seconds. If assessment fails, the submission remains visible with an error instead of receiving an invented score.</p></form></div>
-          <aside class="submit-aside"><div class="aside-illustration"><div class="doc-icon">{ }</div><div class="scan-line"></div><div class="scan-caption">REPOSITORY EVIDENCE SCAN</div></div><h3>What gets inspected?</h3><div class="inspection-list"><div><span>01</span><p><b>Project signals</b><small>README, description, language, repo activity</small></p></div><div><span>02</span><p><b>Engineering evidence</b><small>Selected source files, tests, dependencies and CI</small></p></div><div><span>03</span><p><b>Delivery signals</b><small>Deployment config, license metadata and demo reachability</small></p></div></div><div class="caution-note">A file existing is a signal, not proof that the feature works. Judges retain final authority.</div></aside></div>
+        <div class="submit-layout">
+          <div class="panel submit-form-panel">
+            <div class="panel-heading">
+              <div><div class="eyebrow">02 / SUBMISSION INTAKE</div><h3>Evaluate a project</h3><p>Paste the repository URL. A live demo is optional.</p></div>
+              <span class="step-badge">02</span>
+            </div>
+            <form id="submission-form">
+              <label>Hackathon <select id="submission-hackathon" required><option value="">Select a hackathon...</option></select></label>
+              <div class="two-col">
+                <label>Team name <input id="team-name" required maxlength="120" placeholder="e.g. Cloud Pioneers"></label>
+                <label>Project name <input id="project-name" required maxlength="120" placeholder="e.g. CostPilot"></label>
+              </div>
+              <label>GitHub repository URL <input id="github-url" required type="url" placeholder="https://github.com/owner/repository"><small>Public repositories work without a token.</small></label>
+              <label>Live demo URL <input id="demo-url" type="url" placeholder="https://your-project.example (optional)"></label>
+              <label>What should judges know? <textarea id="submission-notes" rows="3" maxlength="2000" placeholder="Briefly describe the problem, your approach..."></textarea></label>
+              <div class="safety-note"><span>&#9672;</span><p><b>Safe-by-design review.</b> Repository code is read as evidence and is never executed.</p></div>
+              <button class="button button-primary full-width" type="submit" id="evaluate-submit">Collect evidence &amp; evaluate <span>&#8594;</span></button>
+              <p class="form-footnote">Evaluation can take a few seconds. If assessment fails, the submission remains visible with an error.</p>
+            </form>
+          </div>
+          <aside class="submit-aside">
+            <div class="aside-illustration"><div class="doc-icon">{ }</div><div class="scan-line"></div><div class="scan-caption">REPOSITORY EVIDENCE SCAN</div></div>
+            <h3>What gets inspected?</h3>
+            <div class="inspection-list">
+              <div><span>01</span><p><b>Project signals</b><small>README, description, language, repo activity</small></p></div>
+              <div><span>02</span><p><b>Engineering evidence</b><small>Selected source files, tests, dependencies and CI</small></p></div>
+              <div><span>03</span><p><b>Delivery signals</b><small>Deployment config, license metadata and demo reachability</small></p></div>
+            </div>
+            <div class="caution-note">A file existing is a signal, not proof that the feature works. Judges retain final authority.</div>
+          </aside>
+        </div>
       </section>
 
+      <!-- BATCH CSV EVALUATE -->
+      <section class="view hidden" id="view-batch">
+        <div class="batch-layout">
+          <div class="panel batch-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow">03 / BATCH EVALUATION</div>
+                <h3>Evaluate from CSV</h3>
+                <p>Upload a CSV with <code>Project Name</code> and <code>GitHub Repository Link</code> columns. All projects are evaluated automatically.</p>
+              </div>
+              <span class="step-badge">03</span>
+            </div>
+            <div class="batch-form-body" id="batch-form-body">
+              <label>Target hackathon
+                <select id="batch-hackathon" required><option value="">Select a hackathon...</option></select>
+              </label>
+              <label>Delay between evaluations (seconds)
+                <input id="batch-delay" type="number" min="1" max="60" value="5">
+                <small>Higher delay reduces rate-limit errors. Recommended: 3&#8211;5s.</small>
+              </label>
+              <div class="csv-drop-zone" id="csv-drop-zone">
+                <div class="csv-drop-icon">
+                  <svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4M8 8l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="csv-drop-text"><b>Drop your CSV here</b><small>or click to browse</small></div>
+                <input type="file" id="csv-file-input" accept=".csv" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+              </div>
+              <div id="csv-preview" class="csv-preview hidden">
+                <div class="csv-preview-header">
+                  <span id="csv-file-name" class="csv-filename"></span>
+                  <span id="csv-row-count" class="csv-row-badge"></span>
+                  <button class="text-button small" id="csv-clear">&#10005; Clear</button>
+                </div>
+                <div class="csv-table-wrap">
+                  <table id="csv-table" class="csv-table"><thead></thead><tbody></tbody></table>
+                </div>
+              </div>
+              <button class="button button-primary full-width" id="batch-start-btn" disabled>
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z" fill="currentColor"/></svg>
+                Start batch evaluation
+              </button>
+            </div>
+            <div id="batch-progress-panel" class="batch-progress-panel hidden">
+              <div class="progress-header">
+                <div><div class="eyebrow">EVALUATION IN PROGRESS</div><h4 id="batch-progress-title">Evaluating projects...</h4></div>
+                <span id="batch-progress-fraction" class="batch-fraction">0 / 0</span>
+              </div>
+              <div class="progress-bar-track"><div class="progress-bar-fill" id="batch-progress-bar" style="width:0%"></div></div>
+              <div id="batch-live-log" class="batch-live-log"></div>
+            </div>
+            <div id="batch-results-panel" class="batch-results-panel hidden">
+              <div class="section-heading" style="margin-top:0">
+                <div><div class="eyebrow">RESULTS</div><h3>Leaderboard</h3></div>
+                <button class="button button-secondary small" id="batch-export-btn">&#11015; Export CSV</button>
+              </div>
+              <div class="results-table-wrap">
+                <table class="results-table" id="batch-results-table">
+                  <thead><tr><th>#</th><th>Project</th><th>Team</th><th>Score</th><th>Status</th><th>Method</th></tr></thead>
+                  <tbody id="batch-results-body"></tbody>
+                </table>
+              </div>
+              <button class="button button-secondary full-width" id="batch-run-again" style="margin-top:1rem">Run another batch</button>
+            </div>
+          </div>
+          <aside class="batch-aside">
+            <div class="eyebrow">CSV FORMAT</div>
+            <h4>Required columns</h4>
+            <div class="format-example">
+              <div class="format-row header-row"><span>Project Name</span><span>GitHub Repository Link</span></div>
+              <div class="format-row"><span>My Project</span><span>https://github.com/user/repo</span></div>
+              <div class="format-row"><span>AI Assistant</span><span>https://github.com/team/ai-proj</span></div>
+            </div>
+            <p class="muted" style="font-size:0.78rem;margin-top:0.75rem">Column names are flexible &#8212; auto-detects <code>github url</code>, <code>repo</code>, <code>project name</code>, etc.</p>
+            <div class="aside-tip">
+              <span class="tiny-icon purple">&#10022;</span>
+              <div><b>Tip: Incremental saving</b><small>Results are saved after every project. If something fails mid-way, completed results are preserved.</small></div>
+            </div>
+            <div class="aside-tip" style="margin-top:0.75rem">
+              <span class="tiny-icon green">&#8961;</span>
+              <div><b>Rate limiting</b><small>Use a 3&#8211;5s delay to avoid API throttling across large batches.</small></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- HACKATHON DASHBOARD -->
       <section class="view hidden" id="view-dashboard">
-        <div class="dashboard-back"><button class="text-button" id="back-overview">← All hackathons</button><span id="dashboard-track" class="track-pill"></span></div>
-        <div class="dashboard-title-row"><div><div class="eyebrow">JUDGING RESULTS</div><h2 id="dashboard-name">Hackathon</h2><p id="dashboard-description" class="muted"></p></div><button class="button button-primary" id="dashboard-submit">＋ Add submission</button></div>
-        <div class="dashboard-summary"><div><small>SUBMISSIONS</small><b id="dash-total">0</b></div><div><small>ASSESSED</small><b id="dash-assessed">0</b></div><div><small>TOP SCORE</small><b id="dash-top">—</b></div><div><small>HUMAN OVERRIDES</small><b id="dash-overrides">0</b></div></div>
-        <div class="section-heading"><div><div class="eyebrow">LEADERBOARD</div><h3>Project assessments</h3></div><span class="muted">Sorted by final score</span></div><div id="submission-list" class="submission-list"></div><div id="empty-submissions" class="empty-state compact"><h3>No submissions yet</h3><p>Submit the first repository to generate an evidence-backed assessment.</p><button class="button button-primary" id="empty-submit">Add a submission</button></div>
+        <div class="dashboard-back">
+          <button class="text-button" id="back-overview">&#8592; All hackathons</button>
+          <span id="dashboard-track" class="track-pill"></span>
+        </div>
+        <div class="dashboard-title-row">
+          <div>
+            <div class="eyebrow">JUDGING RESULTS</div>
+            <h2 id="dashboard-name">Hackathon</h2>
+            <p id="dashboard-description" class="muted"></p>
+          </div>
+          <div class="dashboard-title-actions">
+            <button class="button button-primary" id="dashboard-submit">+ Add submission</button>
+            <button class="button button-danger" id="dashboard-delete">&#128465; Delete hackathon</button>
+          </div>
+        </div>
+        <div class="dashboard-summary">
+          <div><small>SUBMISSIONS</small><b id="dash-total">0</b></div>
+          <div><small>ASSESSED</small><b id="dash-assessed">0</b></div>
+          <div><small>TOP SCORE</small><b id="dash-top">&#8212;</b></div>
+          <div><small>HUMAN OVERRIDES</small><b id="dash-overrides">0</b></div>
+        </div>
+        <div class="section-heading">
+          <div><div class="eyebrow">LEADERBOARD</div><h3>Project assessments</h3></div>
+          <span class="muted">Sorted by final score</span>
+        </div>
+        <div id="submission-list" class="submission-list"></div>
+        <div id="empty-submissions" class="empty-state compact">
+          <h3>No submissions yet</h3>
+          <p>Submit the first repository to generate an evidence-backed assessment.</p>
+          <button class="button button-primary" id="empty-submit">Add a submission</button>
+        </div>
       </section>
     </main>
   </div>
-  <div id="detail-modal" class="modal hidden" role="dialog" aria-modal="true"><div class="modal-backdrop" data-close-modal></div><div class="modal-card"><button class="modal-close" data-close-modal>×</button><div id="detail-content"></div></div></div>
+
+  <!-- DETAIL MODAL -->
+  <div id="detail-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card"><button class="modal-close" data-close-modal>&#215;</button><div id="detail-content"></div></div>
+  </div>
+
+  <!-- DELETE CONFIRM MODAL -->
+  <div id="delete-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" id="delete-modal-backdrop"></div>
+    <div class="modal-card confirm-card">
+      <div class="confirm-icon">&#128465;</div>
+      <h3>Delete hackathon?</h3>
+      <p id="delete-modal-msg">This will permanently delete the hackathon and all its submissions. This cannot be undone.</p>
+      <div class="confirm-actions">
+        <button class="button button-secondary" id="delete-cancel">Cancel</button>
+        <button class="button button-danger" id="delete-confirm">Yes, delete it</button>
+      </div>
+    </div>
+  </div>
+
   <script src="{{ url_for('static', filename='app.js') }}"></script>
-</body></html>
+</body>
+</html>

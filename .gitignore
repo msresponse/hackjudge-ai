@@ -14,3 +14,4 @@ instance/
 *.sqlite
 *.sqlite3
 .pytest_cache/
+test_results/
