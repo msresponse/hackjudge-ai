@@ -175,6 +175,20 @@
               </div>
               <span class="step-badge">03</span>
             </div>
+            <div id="cached-batch-banner" class="cached-batch-banner hidden">
+              <div class="cached-info">
+                <span class="tiny-icon green">&#10003;</span>
+                <div>
+                  <b>Saved results found in browser storage</b>
+                  <small id="cached-batch-info"></small>
+                </div>
+              </div>
+              <div class="cached-actions">
+                <button class="button button-secondary small" id="restore-cached-btn">View leaderboard</button>
+                <button class="button button-secondary small" id="download-cached-btn">&#11015; Download CSV</button>
+                <button class="text-button small" id="dismiss-cached-btn">&#10005;</button>
+              </div>
+            </div>
             <div class="batch-form-body" id="batch-form-body">
               <label>Target hackathon
                 <select id="batch-hackathon" required><option value="">Select a hackathon...</option></select>
@@ -216,7 +230,10 @@
             <div id="batch-results-panel" class="batch-results-panel hidden">
               <div class="section-heading" style="margin-top:0">
                 <div><div class="eyebrow">RESULTS</div><h3>Leaderboard</h3></div>
-                <button class="button button-secondary small" id="batch-export-btn">&#11015; Export CSV</button>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <button class="button button-secondary small hidden" id="batch-retry-failed-btn">&#128260; Retry failed (<span id="failed-count">0</span>)</button>
+                  <button class="button button-secondary small" id="batch-export-btn">&#11015; Export CSV</button>
+                </div>
               </div>
               <div class="results-table-wrap">
                 <table class="results-table" id="batch-results-table">

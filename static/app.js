@@ -63,7 +63,7 @@ function navigate(view) {
   }
   if (view === 'overview') loadOverview();
   if (view === 'submit') fillHackathonSelect();
-  if (view === 'batch') fillBatchHackathonSelect();
+  if (view === 'batch') { fillBatchHackathonSelect(); checkCachedBatch(); }
 }
 
 $$('[data-view]').forEach(b => b.addEventListener('click', () => navigate(b.dataset.view)));
@@ -696,6 +696,115 @@ $('#csv-clear')?.addEventListener('click', () => {
   updateBatchStartBtn();
 });
 
+// ═══════════════════════════════════════════════════════════════
+// BATCH LOCAL CACHE & AUTO-DOWNLOAD HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function saveBatchToStorage(hackId, hackName) {
+  try {
+    const payload = {
+      hackathon_id: hackId,
+      hackathon_name: hackName || `Hackathon #${hackId}`,
+      timestamp: new Date().toISOString(),
+      results: state.batchResults
+    };
+    localStorage.setItem('hj_cached_batch', JSON.stringify(payload));
+  } catch (e) {
+    console.warn('Could not save to localStorage:', e);
+  }
+}
+
+function checkCachedBatch() {
+  const banner = $('#cached-batch-banner');
+  if (!banner) return;
+  try {
+    const raw = localStorage.getItem('hj_cached_batch');
+    if (!raw) {
+      banner.classList.add('hidden');
+      return;
+    }
+    const data = JSON.parse(raw);
+    if (!data || !data.results || !data.results.length) {
+      banner.classList.add('hidden');
+      return;
+    }
+    const timeAgo = new Date(data.timestamp).toLocaleString();
+    const count = data.results.length;
+    $('#cached-batch-info').textContent = `${count} project${count === 1 ? '' : 's'} from "${escapeHtml(data.hackathon_name)}" evaluated on ${timeAgo}`;
+    banner.classList.remove('hidden');
+  } catch (e) {
+    banner.classList.add('hidden');
+  }
+}
+
+function downloadBatchCSV(results, hackName, isAuto = false) {
+  if (!results || !results.length) {
+    if (!isAuto) toast('No batch results to export.', 'error');
+    return;
+  }
+  const sorted = [...results].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const headers = ['Rank', 'Project Name', 'Team Name', 'Score', 'Status', 'Assessment Method', 'GitHub URL', 'Live Demo URL', 'Error Details'];
+  const rows = sorted.map((r, idx) => [
+    idx + 1,
+    `"${(r.project_name || '').replace(/"/g, '""')}"`,
+    `"${(r.team_name || '').replace(/"/g, '""')}"`,
+    r.score !== null && r.score !== undefined ? Number(r.score).toFixed(1) : '',
+    `"${r.status || ''}"`,
+    `"${r.method || ''}"`,
+    `"${(r.github_url || '').replace(/"/g, '""')}"`,
+    `"${(r.demo_url || '').replace(/"/g, '""')}"`,
+    `"${(r.error || '').replace(/"/g, '""')}"`
+  ]);
+
+  const csvContent = 'data:text/csv;charset=utf-8,﻿' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  const safeName = (hackName || 'hackathon').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  link.setAttribute('download', `hackjudge_results_${safeName}_${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  if (isAuto) {
+    toast('✓ Results CSV downloaded automatically to your system!', 'success', 7000);
+  } else {
+    toast('Downloaded batch evaluation results CSV.', 'success');
+  }
+}
+
+// Restore cached batch from browser memory
+$('#restore-cached-btn')?.addEventListener('click', () => {
+  try {
+    const raw = localStorage.getItem('hj_cached_batch');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.batchResults = data.results || [];
+    $('#batch-form-body')?.classList.add('hidden');
+    $('#batch-progress-panel')?.classList.add('hidden');
+    renderBatchResults(data.hackathon_name);
+    toast(`Restored ${state.batchResults.length} projects from browser memory.`, 'success');
+  } catch (err) {
+    toast('Could not restore cached results: ' + err.message, 'error');
+  }
+});
+
+$('#download-cached-btn')?.addEventListener('click', () => {
+  try {
+    const raw = localStorage.getItem('hj_cached_batch');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    downloadBatchCSV(data.results, data.hackathon_name, false);
+  } catch (err) {
+    toast('Could not download cached results: ' + err.message, 'error');
+  }
+});
+
+$('#dismiss-cached-btn')?.addEventListener('click', () => {
+  $('#cached-batch-banner')?.classList.add('hidden');
+});
+
 // START BATCH EVALUATION
 $('#batch-start-btn')?.addEventListener('click', async () => {
   const hackId = $('#batch-hackathon')?.value;
@@ -708,6 +817,7 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
     return;
   }
 
+  const hackName = $('#batch-hackathon option:checked')?.text?.split('—')[0]?.trim() || 'Hackathon';
   const delaySec = Math.max(1, Math.min(60, Number($('#batch-delay')?.value || 5)));
   state.batchEvaluating = true;
   state.batchResults = [];
@@ -715,11 +825,13 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
   $('#batch-form-body').classList.add('hidden');
   $('#batch-progress-panel').classList.remove('hidden');
   $('#batch-results-panel').classList.add('hidden');
+  $('#cached-batch-banner')?.classList.add('hidden');
 
   const total = state.batchRows.length;
   const logEl = $('#batch-live-log');
   logEl.innerHTML = '';
 
+  // PASS 1: Evaluate all projects sequentially
   for (let i = 0; i < total; i++) {
     const item = state.batchRows[i];
     const numDisp = i + 1;
@@ -728,7 +840,6 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
     $('#batch-progress-title').textContent = `Evaluating "${item.project_name}" (${numDisp} of ${total})...`;
     $('#batch-progress-bar').style.width = `${Math.round((i / total) * 100)}%`;
 
-    // Add log entry
     const logItem = document.createElement('div');
     logItem.className = 'log-item evaluating';
     logItem.innerHTML = `<span>⏳ [${numDisp}/${total}]</span> <b>${escapeHtml(item.project_name)}</b> <small>(${escapeHtml(item.team_name)})</small> — analyzing repository...`;
@@ -739,6 +850,7 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
       team_name: item.team_name,
       github_url: item.github_url,
       demo_url: item.demo_url,
+      notes: item.notes,
       score: null,
       status: 'PENDING',
       method: 'unknown',
@@ -780,7 +892,6 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
 
     state.batchResults.push(result);
 
-    // Rate-limit delay between projects
     if (i < total - 1) {
       const waitNotice = document.createElement('div');
       waitNotice.className = 'log-item';
@@ -793,27 +904,109 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
     }
   }
 
-  // Finished!
+  // PASS 2: Auto-Retry any failed projects before finalizing
+  const failedIndices = state.batchResults
+    .map((r, idx) => (r.status === 'ERROR' ? idx : -1))
+    .filter(idx => idx !== -1);
+
+  if (failedIndices.length > 0) {
+    const cooldown = 6;
+    $('#batch-progress-title').textContent = `Retrying ${failedIndices.length} failed project(s) (Pass 2 Auto-Recovery)...`;
+    const retryBanner = document.createElement('div');
+    retryBanner.className = 'log-item';
+    retryBanner.style.background = 'rgba(234,179,8,0.12)';
+    retryBanner.style.color = '#fde047';
+    retryBanner.innerHTML = `<span>🔄</span> <b>Pass 2 Auto-Recovery:</b> Retrying ${failedIndices.length} failed project(s) after a ${cooldown}s cooldown...`;
+    logEl.prepend(retryBanner);
+    await sleep(cooldown * 1000);
+
+    for (let k = 0; k < failedIndices.length; k++) {
+      const idx = failedIndices[k];
+      const item = state.batchRows[idx];
+      const numDisp = k + 1;
+
+      $('#batch-progress-title').textContent = `[Pass 2] Retrying "${item.project_name}" (${numDisp} of ${failedIndices.length})...`;
+      const retryLog = document.createElement('div');
+      retryLog.className = 'log-item evaluating';
+      retryLog.innerHTML = `<span>⏳ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — re-evaluating...`;
+      logEl.prepend(retryLog);
+
+      try {
+        const { data, response } = await api('/api/submissions', {
+          method: 'POST',
+          body: JSON.stringify({
+            hackathon_id: hackId,
+            team_name: item.team_name,
+            project_name: item.project_name,
+            github_url: item.github_url,
+            demo_url: item.demo_url,
+            notes: item.notes
+          })
+        });
+
+        if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+          retryLog.className = 'log-item error';
+          retryLog.innerHTML = `<span>⚠️ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — still failed: ${escapeHtml((data.evaluation?.error || 'Assessment failed').substring(0, 80))}`;
+        } else {
+          state.batchResults[idx].status = data.status || 'EVALUATED';
+          state.batchResults[idx].score = data.score !== null && data.score !== undefined ? Number(data.score) : 0;
+          state.batchResults[idx].method = data.assessment_method || 'ai';
+          state.batchResults[idx].submission_id = data.id;
+          state.batchResults[idx].error = null;
+          retryLog.className = 'log-item done';
+          retryLog.innerHTML = `<span>✓ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — recovered! <span class="log-score">${state.batchResults[idx].score.toFixed(1)} / 100</span>`;
+        }
+      } catch (err) {
+        retryLog.className = 'log-item error';
+        retryLog.innerHTML = `<span>✕ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — retry network error: ${escapeHtml(err.message)}`;
+      }
+
+      if (k < failedIndices.length - 1) {
+        await sleep(delaySec * 1000);
+      }
+    }
+  }
+
+  // Evaluation complete!
   $('#batch-progress-bar').style.width = '100%';
   $('#batch-progress-fraction').textContent = `${total} / ${total}`;
   $('#batch-progress-title').textContent = `Batch evaluation complete (${total} projects)!`;
   state.batchEvaluating = false;
 
-  renderBatchResults();
-  toast('Batch evaluation finished!', 'success', 6000);
+  saveBatchToStorage(hackId, hackName);
+  renderBatchResults(hackName);
+  checkCachedBatch();
+
+  // AUTOMATIC CSV DOWNLOAD TO USER'S SYSTEM
+  downloadBatchCSV(state.batchResults, hackName, true);
 });
 
-function renderBatchResults() {
+function renderBatchResults(hackName) {
   $('#batch-results-panel').classList.remove('hidden');
   const tbody = $('#batch-results-body');
   if (!tbody) return;
+
+  const currentHackName = hackName || $('#batch-hackathon option:checked')?.text?.split('—')[0]?.trim() || 'Hackathon';
+
+  // Check failed count to show/hide retry failed button
+  const failedList = state.batchResults.filter(r => r.status === 'ERROR');
+  const retryBtn = $('#batch-retry-failed-btn');
+  const failedCountEl = $('#failed-count');
+  if (retryBtn && failedCountEl) {
+    if (failedList.length > 0) {
+      failedCountEl.textContent = failedList.length;
+      retryBtn.classList.remove('hidden');
+    } else {
+      retryBtn.classList.add('hidden');
+    }
+  }
 
   // Sort descending by score
   const sorted = [...state.batchResults].sort((a, b) => (b.score || 0) - (a.score || 0));
 
   tbody.innerHTML = sorted.map((r, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
-    const scoreVal = r.score !== null ? r.score.toFixed(1) : '—';
+    const scoreVal = r.score !== null ? Number(r.score).toFixed(1) : '—';
     const scoreClass = r.score >= 80 ? 'high' : r.score >= 60 ? 'mid' : 'low';
     const isError = r.status === 'ERROR';
 
@@ -823,6 +1016,7 @@ function renderBatchResults() {
         <td>
           <b>${escapeHtml(r.project_name)}</b><br>
           <a href="${escapeHtml(r.github_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff;font-size:0.75rem">↗ GitHub repo</a>
+          ${r.error ? `<br><small style="color:#ff8b9a">${escapeHtml(r.error.substring(0, 75))}</small>` : ''}
         </td>
         <td>${escapeHtml(r.team_name)}</td>
         <td>
@@ -835,35 +1029,93 @@ function renderBatchResults() {
   }).join('');
 }
 
-// EXPORT RESULTS AS CSV
-$('#batch-export-btn')?.addEventListener('click', () => {
-  if (!state.batchResults.length) {
-    toast('No batch results to export.', 'error');
+// MANUAL RETRY FOR FAILED PROJECTS
+$('#batch-retry-failed-btn')?.addEventListener('click', async () => {
+  const hackId = $('#batch-hackathon')?.value || JSON.parse(localStorage.getItem('hj_cached_batch') || '{}').hackathon_id;
+  if (!hackId) {
+    toast('Please select a target hackathon first.', 'error');
     return;
   }
-  const sorted = [...state.batchResults].sort((a, b) => (b.score || 0) - (a.score || 0));
-  const headers = ['Rank', 'Project Name', 'Team Name', 'Score', 'Status', 'Assessment Method', 'GitHub URL', 'Live Demo URL', 'Error Details'];
-  const rows = sorted.map((r, idx) => [
-    idx + 1,
-    `"${(r.project_name || '').replace(/"/g, '""')}"`,
-    `"${(r.team_name || '').replace(/"/g, '""')}"`,
-    r.score !== null ? r.score.toFixed(1) : '',
-    `"${r.status || ''}"`,
-    `"${r.method || ''}"`,
-    `"${(r.github_url || '').replace(/"/g, '""')}"`,
-    `"${(r.demo_url || '').replace(/"/g, '""')}"`,
-    `"${(r.error || '').replace(/"/g, '""')}"`
-  ]);
+  const failedItems = state.batchResults.filter(r => r.status === 'ERROR');
+  if (!failedItems.length) {
+    toast('No failed projects to retry.', 'info');
+    return;
+  }
 
-  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement('a');
-  link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `hackjudge_batch_results_${new Date().toISOString().slice(0, 10)}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  toast('Downloaded batch evaluation results CSV.', 'success');
+  const btn = $('#batch-retry-failed-btn');
+  btn.disabled = true;
+  btn.textContent = 'Retrying...';
+
+  $('#batch-results-panel').classList.add('hidden');
+  $('#batch-progress-panel').classList.remove('hidden');
+
+  const total = failedItems.length;
+  const logEl = $('#batch-live-log');
+  logEl.innerHTML = `<div class="log-item" style="background:rgba(234,179,8,0.12);color:#fde047"><span>🔄</span> <b>Manual Retry:</b> Re-evaluating ${total} project(s)...</div>`;
+
+  const hackName = $('#batch-hackathon option:checked')?.text?.split('—')[0]?.trim() || 'Hackathon';
+
+  for (let k = 0; k < total; k++) {
+    const item = failedItems[k];
+    const numDisp = k + 1;
+    $('#batch-progress-fraction').textContent = `${numDisp} / ${total}`;
+    $('#batch-progress-title').textContent = `Retrying "${item.project_name}" (${numDisp} of ${total})...`;
+    $('#batch-progress-bar').style.width = `${Math.round((k / total) * 100)}%`;
+
+    const retryLog = document.createElement('div');
+    retryLog.className = 'log-item evaluating';
+    retryLog.innerHTML = `<span>⏳ [${numDisp}/${total}]</span> <b>${escapeHtml(item.project_name)}</b> — re-evaluating...`;
+    logEl.prepend(retryLog);
+
+    const origIdx = state.batchResults.findIndex(r => r.github_url === item.github_url && r.project_name === item.project_name);
+
+    try {
+      const { data, response } = await api('/api/submissions', {
+        method: 'POST',
+        body: JSON.stringify({
+          hackathon_id: hackId,
+          team_name: item.team_name,
+          project_name: item.project_name,
+          github_url: item.github_url,
+          demo_url: item.demo_url,
+          notes: item.notes
+        })
+      });
+
+      if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+        retryLog.className = 'log-item error';
+        retryLog.innerHTML = `<span>⚠️</span> <b>${escapeHtml(item.project_name)}</b> — still failed: ${escapeHtml((data.evaluation?.error || 'Assessment failed').substring(0, 80))}`;
+      } else if (origIdx !== -1) {
+        state.batchResults[origIdx].status = data.status || 'EVALUATED';
+        state.batchResults[origIdx].score = data.score !== null && data.score !== undefined ? Number(data.score) : 0;
+        state.batchResults[origIdx].method = data.assessment_method || 'ai';
+        state.batchResults[origIdx].submission_id = data.id;
+        state.batchResults[origIdx].error = null;
+        retryLog.className = 'log-item done';
+        retryLog.innerHTML = `<span>✓</span> <b>${escapeHtml(item.project_name)}</b> — recovered! <span class="log-score">${state.batchResults[origIdx].score.toFixed(1)} / 100</span>`;
+      }
+    } catch (err) {
+      retryLog.className = 'log-item error';
+      retryLog.innerHTML = `<span>✕</span> <b>${escapeHtml(item.project_name)}</b> — network error: ${escapeHtml(err.message)}`;
+    }
+
+    if (k < total - 1) await sleep(4000);
+  }
+
+  $('#batch-progress-bar').style.width = '100%';
+  btn.disabled = false;
+  btn.innerHTML = '&#128260; Retry failed (<span id="failed-count">0</span>)';
+
+  saveBatchToStorage(hackId, hackName);
+  renderBatchResults(hackName);
+  checkCachedBatch();
+  downloadBatchCSV(state.batchResults, hackName, true);
+});
+
+// EXPORT RESULTS AS CSV
+$('#batch-export-btn')?.addEventListener('click', () => {
+  const hackName = $('#batch-hackathon option:checked')?.text?.split('—')[0]?.trim() || 'Hackathon';
+  downloadBatchCSV(state.batchResults, hackName, false);
 });
 
 // RUN ANOTHER BATCH
@@ -876,8 +1128,11 @@ $('#batch-run-again')?.addEventListener('click', () => {
   $('#batch-results-panel')?.classList.add('hidden');
   $('#batch-form-body')?.classList.remove('hidden');
   updateBatchStartBtn();
+  checkCachedBatch();
 });
+
 
 renderCriteriaEditor();
 loadHealth();
 loadOverview();
+checkCachedBatch();

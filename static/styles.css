@@ -1039,3 +1039,42 @@ code {
   background: rgba(167,139,250,0.12);
   color: var(--purple);
 }
+
+/* Cached batch banner for recovery after sleep / refresh */
+.cached-batch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 12px;
+  animation: slide-in 0.3s ease;
+}
+@media (max-width: 768px) {
+  .cached-batch-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.cached-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cached-info b {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.cached-info small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.cached-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
