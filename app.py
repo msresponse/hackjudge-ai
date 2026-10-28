@@ -547,6 +547,80 @@ def list_submissions(hackathon_id):
     return jsonify([json_row(r) for r in rows])
 
 
+def diagnose_error(exc) -> dict:
+    err_str = str(exc)
+    err_lower = err_str.lower()
+    
+    # Submitter Errors (Student's fault - Non-retryable)
+    if "not found or not publicly accessible" in err_lower or "404" in err_str:
+        return {
+            "error_source": "SUBMITTER_ERROR",
+            "error_reason": "Repository Not Found or Private",
+            "error_detail": "The GitHub repository either does not exist, was deleted, or is set to private. It cannot be accessed publicly.",
+            "retryable": False,
+            "raw_error": err_str[:300]
+        }
+    if "github url must follow" in err_lower or "invalid url" in err_lower or "cannot point to github" in err_lower:
+        return {
+            "error_source": "SUBMITTER_ERROR",
+            "error_reason": "Invalid GitHub URL",
+            "error_detail": f"The submitted repository URL is malformed: {err_str}",
+            "retryable": False,
+            "raw_error": err_str[:300]
+        }
+    if "no code files found" in err_lower or "empty repository" in err_lower:
+        return {
+            "error_source": "SUBMITTER_ERROR",
+            "error_reason": "Empty Repository",
+            "error_detail": "The repository contains no recognizable source code or files to evaluate.",
+            "retryable": False,
+            "raw_error": err_str[:300]
+        }
+    if "demo url rejected" in err_lower:
+        return {
+            "error_source": "SUBMITTER_ERROR",
+            "error_reason": "Invalid Demo URL",
+            "error_detail": err_str,
+            "retryable": False,
+            "raw_error": err_str[:300]
+        }
+
+    # Service-side Errors (Infrastructure / API / Network - Retryable)
+    if "rate limit" in err_lower or "429" in err_str or "403" in err_str:
+        return {
+            "error_source": "SERVICE_ERROR",
+            "error_reason": "API Rate Limit Exceeded",
+            "error_detail": "GitHub or AI provider temporarily rate-limited requests. Retrying after cooldown.",
+            "retryable": True,
+            "raw_error": err_str[:300]
+        }
+    if "timeout" in err_lower or "timed out" in err_lower:
+        return {
+            "error_source": "SERVICE_ERROR",
+            "error_reason": "Network Timeout",
+            "error_detail": "The request took longer than expected to complete. Remote endpoint was slow.",
+            "retryable": True,
+            "raw_error": err_str[:300]
+        }
+    if "ai_api_key" in err_lower or "ai response" in err_lower or "502" in err_str or "503" in err_str or "500" in err_str:
+        return {
+            "error_source": "SERVICE_ERROR",
+            "error_reason": "AI Service Overloaded",
+            "error_detail": "The AI model provider endpoint temporarily failed or returned an invalid payload.",
+            "retryable": True,
+            "raw_error": err_str[:300]
+        }
+
+    # Default fallback
+    return {
+        "error_source": "SERVICE_ERROR",
+        "error_reason": "Temporary Service Error",
+        "error_detail": err_str[:300],
+        "retryable": True,
+        "raw_error": err_str[:300]
+    }
+
+
 @app.post("/api/submissions")
 def create_submission():
     data = request.get_json(silent=True) or {}
@@ -586,9 +660,16 @@ def create_submission():
             row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
         return jsonify(json_row(row)), 201
     except Exception as exc:
-        # Keep failed submissions visible; never fabricate an evaluation.
+        diag = diagnose_error(exc)
+        eval_payload = {
+            "error": diag["error_reason"],
+            "error_source": diag["error_source"],
+            "error_detail": diag["error_detail"],
+            "retryable": diag["retryable"],
+            "summary": f"Assessment failed ({diag['error_reason']}): {diag['error_detail']}"
+        }
         with db() as con:
-            con.execute("UPDATE submissions SET status='ASSESSMENT_ERROR', evaluation_json=?, updated_at=? WHERE id=?", (json.dumps({"error": str(exc)[:500], "summary": "Assessment failed. No score was generated; inspect configuration or repository access and retry."}), now_iso(), submission_id))
+            con.execute("UPDATE submissions SET status='ASSESSMENT_ERROR', evaluation_json=?, updated_at=? WHERE id=?", (json.dumps(eval_payload), now_iso(), submission_id))
             row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
         return jsonify(json_row(row)), 502
 

@@ -762,17 +762,20 @@ function downloadBatchCSV(results, hackName, isAuto = false) {
     return;
   }
   const sorted = [...results].sort((a, b) => (b.score || 0) - (a.score || 0));
-  const headers = ['Rank', 'Project Name', 'Team Name', 'Score', 'Status', 'Assessment Method', 'GitHub URL', 'Live Demo URL', 'Error Details'];
+  const headers = ['Rank', 'Project Name', 'Team Name', 'Score', 'Status', 'Attempts Taken', 'Error Source', 'Error Reason', 'Error Details', 'Assessment Method', 'GitHub URL', 'Live Demo URL'];
   const rows = sorted.map((r, idx) => [
     idx + 1,
     `"${(r.project_name || '').replace(/"/g, '""')}"`,
     `"${(r.team_name || '').replace(/"/g, '""')}"`,
     r.score !== null && r.score !== undefined ? Number(r.score).toFixed(1) : '',
     `"${r.status || ''}"`,
+    `"${r.attempts ? `${r.attempts} attempt${r.attempts === 1 ? '' : 's'}` : '1 attempt'}"`,
+    `"${(r.error_source || '').replace(/"/g, '""')}"`,
+    `"${(r.error_reason || '').replace(/"/g, '""')}"`,
+    `"${(r.error_detail || '').replace(/"/g, '""')}"`,
     `"${r.method || ''}"`,
     `"${(r.github_url || '').replace(/"/g, '""')}"`,
-    `"${(r.demo_url || '').replace(/"/g, '""')}"`,
-    `"${(r.error || '').replace(/"/g, '""')}"`
+    `"${(r.demo_url || '').replace(/"/g, '""')}"`
   ]);
 
   const csvContent = 'data:text/csv;charset=utf-8,﻿' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -850,13 +853,15 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
   const logEl = $('#batch-live-log');
   logEl.innerHTML = '';
 
-  // PASS 1: Evaluate all projects sequentially
+  // ─────────────────────────────────────────────────────────────
+  // PASS 1: Initial evaluation across all projects
+  // ─────────────────────────────────────────────────────────────
   for (let i = 0; i < total; i++) {
     const item = state.batchRows[i];
     const numDisp = i + 1;
 
     $('#batch-progress-fraction').textContent = `${numDisp} / ${total}`;
-    $('#batch-progress-title').textContent = `Evaluating "${item.project_name}" (${numDisp} of ${total})...`;
+    $('#batch-progress-title').textContent = `[Pass 1] Evaluating "${item.project_name}" (${numDisp} of ${total})...`;
     $('#batch-progress-bar').style.width = `${Math.round((i / total) * 100)}%`;
 
     const logItem = document.createElement('div');
@@ -873,7 +878,12 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
       score: null,
       status: 'PENDING',
       method: 'unknown',
-      error: null
+      error: null,
+      error_source: null,
+      error_reason: null,
+      error_detail: null,
+      retryable: true,
+      attempts: 1
     };
 
     try {
@@ -890,10 +900,17 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
       });
 
       if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+        const ev = data.evaluation || {};
         result.status = 'ERROR';
-        result.error = data.evaluation?.error || 'Assessment failed';
+        result.error_source = ev.error_source || 'SERVICE_ERROR';
+        result.error_reason = ev.error || data.error || 'Assessment failed';
+        result.error_detail = ev.error_detail || ev.summary || '';
+        result.retryable = ev.retryable !== false;
+        result.error = result.error_reason;
+
         logItem.className = 'log-item error';
-        logItem.innerHTML = `<span>⚠️ [${numDisp}/${total}]</span> <b>${escapeHtml(item.project_name)}</b> — assessment error: ${escapeHtml(result.error.substring(0, 80))}`;
+        const tag = result.error_source === 'SUBMITTER_ERROR' ? '❌ Submitter Error' : '⚠️ Service Error';
+        logItem.innerHTML = `<span>${tag} [${numDisp}/${total}]</span> <b>${escapeHtml(item.project_name)}</b> — ${escapeHtml(result.error_reason)}`;
       } else {
         result.status = data.status || 'EVALUATED';
         result.score = data.score !== null && data.score !== undefined ? Number(data.score) : 0;
@@ -904,6 +921,10 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
       }
     } catch (err) {
       result.status = 'ERROR';
+      result.error_source = 'SERVICE_ERROR';
+      result.error_reason = 'Network Error';
+      result.error_detail = err.message;
+      result.retryable = true;
       result.error = err.message;
       logItem.className = 'log-item error';
       logItem.innerHTML = `<span>✕ [${numDisp}/${total}]</span> <b>${escapeHtml(item.project_name)}</b> — network error: ${escapeHtml(err.message)}`;
@@ -923,31 +944,45 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
     }
   }
 
-  // PASS 2: Auto-Retry any failed projects before finalizing
-  const failedIndices = state.batchResults
-    .map((r, idx) => (r.status === 'ERROR' ? idx : -1))
+  // ─────────────────────────────────────────────────────────────
+  // PASS 2 (Attempt 2):
+  // - Submitter errors (404, bad URL, empty repo) are LEFT AS-IS.
+  // - Service errors (rate limit, timeout, API glitch) are RETRIED.
+  // ─────────────────────────────────────────────────────────────
+  const nonRetryable = state.batchResults.filter(r => r.status === 'ERROR' && !r.retryable);
+  if (nonRetryable.length > 0) {
+    const notice = document.createElement('div');
+    notice.className = 'log-item';
+    notice.style.background = 'rgba(249,115,22,0.12)';
+    notice.style.color = '#fb923c';
+    notice.innerHTML = `<span>ℹ️</span> <b>${nonRetryable.length} Submitter Error(s) detected:</b> Repository is deleted, private, or invalid. Skipping retries as this is a submitter issue.`;
+    logEl.prepend(notice);
+  }
+
+  const pass2Candidates = state.batchResults
+    .map((r, idx) => (r.status === 'ERROR' && r.retryable ? idx : -1))
     .filter(idx => idx !== -1);
 
-  if (failedIndices.length > 0) {
+  if (pass2Candidates.length > 0) {
     const cooldown = 6;
-    $('#batch-progress-title').textContent = `Retrying ${failedIndices.length} failed project(s) (Pass 2 Auto-Recovery)...`;
+    $('#batch-progress-title').textContent = `Retrying ${pass2Candidates.length} project(s) on service cooldown (Pass 2 of 3)...`;
     const retryBanner = document.createElement('div');
     retryBanner.className = 'log-item';
-    retryBanner.style.background = 'rgba(234,179,8,0.12)';
+    retryBanner.style.background = 'rgba(234,179,8,0.14)';
     retryBanner.style.color = '#fde047';
-    retryBanner.innerHTML = `<span>🔄</span> <b>Pass 2 Auto-Recovery:</b> Retrying ${failedIndices.length} failed project(s) after a ${cooldown}s cooldown...`;
+    retryBanner.innerHTML = `<span>🔄</span> <b>Pass 2 (Attempt 2 of 3):</b> Re-checking ${pass2Candidates.length} service-interrupted project(s) after ${cooldown}s cooldown...`;
     logEl.prepend(retryBanner);
     await sleep(cooldown * 1000);
 
-    for (let k = 0; k < failedIndices.length; k++) {
-      const idx = failedIndices[k];
+    for (let k = 0; k < pass2Candidates.length; k++) {
+      const idx = pass2Candidates[k];
       const item = state.batchRows[idx];
       const numDisp = k + 1;
 
-      $('#batch-progress-title').textContent = `[Pass 2] Retrying "${item.project_name}" (${numDisp} of ${failedIndices.length})...`;
+      $('#batch-progress-title').textContent = `[Pass 2] Re-checking "${item.project_name}" (${numDisp} of ${pass2Candidates.length})...`;
       const retryLog = document.createElement('div');
       retryLog.className = 'log-item evaluating';
-      retryLog.innerHTML = `<span>⏳ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — re-evaluating...`;
+      retryLog.innerHTML = `<span>⏳ [Attempt 2/3]</span> <b>${escapeHtml(item.project_name)}</b> — re-evaluating...`;
       logEl.prepend(retryLog);
 
       try {
@@ -964,29 +999,123 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
         });
 
         if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+          const ev = data.evaluation || {};
+          state.batchResults[idx].attempts = 2;
+          state.batchResults[idx].error_source = ev.error_source || 'SERVICE_ERROR';
+          state.batchResults[idx].error_reason = ev.error || data.error || 'Assessment failed';
+          state.batchResults[idx].error_detail = ev.error_detail || ev.summary || '';
+          state.batchResults[idx].retryable = ev.retryable !== false;
+          state.batchResults[idx].error = state.batchResults[idx].error_reason;
+
           retryLog.className = 'log-item error';
-          retryLog.innerHTML = `<span>⚠️ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — still failed: ${escapeHtml((data.evaluation?.error || 'Assessment failed').substring(0, 80))}`;
+          retryLog.innerHTML = `<span>⚠️ [Attempt 2/3 Failed]</span> <b>${escapeHtml(item.project_name)}</b> — ${escapeHtml(state.batchResults[idx].error_reason)}`;
         } else {
           state.batchResults[idx].status = data.status || 'EVALUATED';
           state.batchResults[idx].score = data.score !== null && data.score !== undefined ? Number(data.score) : 0;
           state.batchResults[idx].method = data.assessment_method || 'ai';
           state.batchResults[idx].submission_id = data.id;
           state.batchResults[idx].error = null;
+          state.batchResults[idx].attempts = 2;
+
           retryLog.className = 'log-item done';
-          retryLog.innerHTML = `<span>✓ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — recovered! <span class="log-score">${state.batchResults[idx].score.toFixed(1)} / 100</span>`;
+          retryLog.innerHTML = `<span>✓ [Recovered on Attempt 2]</span> <b>${escapeHtml(item.project_name)}</b> — evaluated! <span class="log-score">${state.batchResults[idx].score.toFixed(1)} / 100</span>`;
         }
       } catch (err) {
+        state.batchResults[idx].attempts = 2;
         retryLog.className = 'log-item error';
-        retryLog.innerHTML = `<span>✕ [Retry ${numDisp}/${failedIndices.length}]</span> <b>${escapeHtml(item.project_name)}</b> — retry network error: ${escapeHtml(err.message)}`;
+        retryLog.innerHTML = `<span>✕ [Attempt 2/3 Failed]</span> <b>${escapeHtml(item.project_name)}</b> — ${escapeHtml(err.message)}`;
       }
 
-      if (k < failedIndices.length - 1) {
+      if (k < pass2Candidates.length - 1) {
         await sleep(delaySec * 1000);
       }
     }
   }
 
-  // Evaluation complete!
+  // ─────────────────────────────────────────────────────────────
+  // PASS 3 (Attempt 3 - Final Service Pass):
+  // If the error was strictly from OUR SERVICE SIDE (rate limits/AI timeouts)
+  // and still failed on Attempt 2, give it one final 3rd attempt after a longer cooldown.
+  // ─────────────────────────────────────────────────────────────
+  const pass3Candidates = state.batchResults
+    .map((r, idx) => (r.status === 'ERROR' && r.retryable ? idx : -1))
+    .filter(idx => idx !== -1);
+
+  if (pass3Candidates.length > 0) {
+    const cooldown3 = 10;
+    $('#batch-progress-title').textContent = `Final pass for ${pass3Candidates.length} service-impacted project(s) (Pass 3 of 3)...`;
+    const banner3 = document.createElement('div');
+    banner3.className = 'log-item';
+    banner3.style.background = 'rgba(239,68,68,0.14)';
+    banner3.style.color = '#fca5a5';
+    banner3.innerHTML = `<span>🔄</span> <b>Pass 3 (Final Service Pass):</b> Retrying ${pass3Candidates.length} project(s) after a ${cooldown3}s cooldown to clear server congestion...`;
+    logEl.prepend(banner3);
+    await sleep(cooldown3 * 1000);
+
+    for (let k = 0; k < pass3Candidates.length; k++) {
+      const idx = pass3Candidates[k];
+      const item = state.batchRows[idx];
+      const numDisp = k + 1;
+
+      $('#batch-progress-title').textContent = `[Pass 3 Final] Re-evaluating "${item.project_name}" (${numDisp} of ${pass3Candidates.length})...`;
+      const finalLog = document.createElement('div');
+      finalLog.className = 'log-item evaluating';
+      finalLog.innerHTML = `<span>⏳ [Final Attempt 3/3]</span> <b>${escapeHtml(item.project_name)}</b> — final attempt...`;
+      logEl.prepend(finalLog);
+
+      try {
+        const { data, response } = await api('/api/submissions', {
+          method: 'POST',
+          body: JSON.stringify({
+            hackathon_id: hackId,
+            team_name: item.team_name,
+            project_name: item.project_name,
+            github_url: item.github_url,
+            demo_url: item.demo_url,
+            notes: item.notes
+          })
+        });
+
+        if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+          const ev = data.evaluation || {};
+          state.batchResults[idx].attempts = 3;
+          state.batchResults[idx].error_source = 'SERVICE_ERROR';
+          state.batchResults[idx].error_reason = (ev.error || data.error || 'Service Error') + ' (3 attempts failed)';
+          state.batchResults[idx].error_detail = ev.error_detail || ev.summary || 'Service remained unavailable after 3 separate attempts.';
+          state.batchResults[idx].error = state.batchResults[idx].error_reason;
+
+          finalLog.className = 'log-item error';
+          finalLog.innerHTML = `<span>⚠️ [Attempt 3 Exhausted]</span> <b>${escapeHtml(item.project_name)}</b> — ${escapeHtml(state.batchResults[idx].error_reason)}`;
+        } else {
+          state.batchResults[idx].status = data.status || 'EVALUATED';
+          state.batchResults[idx].score = data.score !== null && data.score !== undefined ? Number(data.score) : 0;
+          state.batchResults[idx].method = data.assessment_method || 'ai';
+          state.batchResults[idx].submission_id = data.id;
+          state.batchResults[idx].error = null;
+          state.batchResults[idx].attempts = 3;
+
+          finalLog.className = 'log-item done';
+          finalLog.innerHTML = `<span>✓ [Recovered on Final Attempt 3]</span> <b>${escapeHtml(item.project_name)}</b> — evaluated! <span class="log-score">${state.batchResults[idx].score.toFixed(1)} / 100</span>`;
+        }
+      } catch (err) {
+        state.batchResults[idx].attempts = 3;
+        state.batchResults[idx].error_source = 'SERVICE_ERROR';
+        state.batchResults[idx].error_reason = 'Network Timeout (3 attempts failed)';
+        state.batchResults[idx].error_detail = err.message;
+        state.batchResults[idx].error = state.batchResults[idx].error_reason;
+        finalLog.className = 'log-item error';
+        finalLog.innerHTML = `<span>✕ [Attempt 3 Exhausted]</span> <b>${escapeHtml(item.project_name)}</b> — ${escapeHtml(err.message)}`;
+      }
+
+      if (k < pass3Candidates.length - 1) {
+        await sleep(delaySec * 1000);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Evaluation Complete: Render results, save cache, auto-download
+  // ─────────────────────────────────────────────────────────────
   $('#batch-progress-bar').style.width = '100%';
   $('#batch-progress-fraction').textContent = `${total} / ${total}`;
   $('#batch-progress-title').textContent = `Batch evaluation complete (${total} projects)!`;
@@ -1007,13 +1136,13 @@ function renderBatchResults(hackName) {
 
   const currentHackName = hackName || $('#batch-hackathon option:checked')?.text?.split('—')[0]?.trim() || 'Hackathon';
 
-  // Check failed count to show/hide retry failed button
-  const failedList = state.batchResults.filter(r => r.status === 'ERROR');
+  // Only show retry button if there are service-side errors that can benefit from retrying
+  const retryableFailed = state.batchResults.filter(r => r.status === 'ERROR' && r.retryable !== false);
   const retryBtn = $('#batch-retry-failed-btn');
   const failedCountEl = $('#failed-count');
   if (retryBtn && failedCountEl) {
-    if (failedList.length > 0) {
-      failedCountEl.textContent = failedList.length;
+    if (retryableFailed.length > 0) {
+      failedCountEl.textContent = retryableFailed.length;
       retryBtn.classList.remove('hidden');
     } else {
       retryBtn.classList.add('hidden');
@@ -1029,20 +1158,33 @@ function renderBatchResults(hackName) {
     const scoreClass = r.score >= 80 ? 'high' : r.score >= 60 ? 'mid' : 'low';
     const isError = r.status === 'ERROR';
 
+    let errorBadge = '';
+    let errorSubtext = '';
+    if (isError) {
+      if (r.error_source === 'SUBMITTER_ERROR') {
+        errorBadge = `<span class="status-tag error" style="background:#3a2016;color:#fb923c;border:1px solid rgba(251,146,60,0.3);" title="${escapeHtml(r.error_detail || '')}">❌ SUBMITTER: ${escapeHtml(r.error_reason || 'Invalid repo')}</span>`;
+        errorSubtext = `<br><small style="color:#fdba74;font-size:0.72rem;"><b>Submitter fault:</b> ${escapeHtml(r.error_detail || r.error_reason || '')}</small>`;
+      } else {
+        const attemptLabel = r.attempts ? ` (${r.attempts} attempts)` : '';
+        errorBadge = `<span class="status-tag error" style="background:#3a2228;color:#ff8b9a;border:1px solid rgba(255,80,100,0.3);" title="${escapeHtml(r.error_detail || '')}">⚠️ SERVICE: ${escapeHtml(r.error_reason || 'Service error')}${attemptLabel}</span>`;
+        errorSubtext = `<br><small style="color:#ff8b9a;font-size:0.72rem;"><b>Service fault:</b> ${escapeHtml(r.error_detail || r.error_reason || '')}</small>`;
+      }
+    }
+
     return `
       <tr>
         <td><span class="rank-medal">${medal}</span></td>
         <td>
           <b>${escapeHtml(r.project_name)}</b><br>
           <a href="${escapeHtml(r.github_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff;font-size:0.75rem">↗ GitHub repo</a>
-          ${r.error ? `<br><small style="color:#ff8b9a">${escapeHtml(r.error.substring(0, 75))}</small>` : ''}
+          ${errorSubtext}
         </td>
         <td>${escapeHtml(r.team_name)}</td>
         <td>
-          ${isError ? '<span class="status-tag error">ERROR</span>' : `<span class="score-pill ${scoreClass}">${scoreVal} / 100</span>`}
+          ${isError ? '<span class="score-pill low">—</span>' : `<span class="score-pill ${scoreClass}">${scoreVal} / 100</span>`}
         </td>
-        <td><span class="${isError ? 'status-tag error' : 'status-tag'}">${escapeHtml(r.status)}</span></td>
-        <td><span class="method-badge ${r.method === 'evidence-baseline' ? 'baseline' : ''}">${escapeHtml(r.method)}</span></td>
+        <td>${isError ? errorBadge : `<span class="status-tag">${escapeHtml(r.status)}</span>`}</td>
+        <td><span class="method-badge ${r.method === 'evidence-baseline' ? 'baseline' : ''}">${escapeHtml(r.method || '—')}</span></td>
       </tr>
     `;
   }).join('');
