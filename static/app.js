@@ -48,6 +48,12 @@ async function api(path, options = {}) {
 
 function navigate(view) {
   state.view = view;
+  try {
+    sessionStorage.setItem('hj_active_view', view);
+    if (view !== 'dashboard') {
+      sessionStorage.removeItem('hj_active_hackathon_id');
+    }
+  } catch {}
   $$('.view').forEach(el => el.classList.toggle('hidden', el.id !== `view-${view}`));
   $$('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
   const titles = {
@@ -247,48 +253,57 @@ async function loadHealth() {
   }
 }
 
+function renderHackathonsList(hacks) {
+  state.hackathons = hacks;
+  const submissions = hacks.reduce((s, h) => s + (h.submission_count || 0), 0);
+  const overrides = hacks.reduce((s, h) => s + (h.override_count || 0), 0);
+  $('#stat-hackathons').textContent = hacks.length;
+  $('#stat-submissions').textContent = submissions;
+  $('#stat-overrides').textContent = overrides;
+  $('#hackathon-count').textContent = `${hacks.length} program${hacks.length === 1 ? '' : 's'}`;
+  $('#hackathon-list').innerHTML = hacks.map(h => `
+    <article class="hackathon-card" data-open-hack="${h.id}">
+      <div class="hackathon-card-top">
+        <span class="track-tag">${escapeHtml(h.track)}</span>
+        <span class="muted">ID ${h.id}</span>
+      </div>
+      <h4>${escapeHtml(h.name)}</h4>
+      <p>${escapeHtml(h.description || 'No description added.')} </p>
+      <div class="card-meta">
+        <span>◈ ${h.submission_count || 0} submission${h.submission_count === 1 ? '' : 's'}</span>
+        <strong>Open dashboard →</strong>
+      </div>
+    </article>
+  `).join('');
+  $('#empty-hackathons').classList.toggle('hidden', hacks.length > 0);
+  $('#hackathon-list').classList.toggle('hidden', hacks.length === 0);
+  $$('[data-open-hack]').forEach(el => el.addEventListener('click', () => openHackathon(Number(el.dataset.openHack))));
+  fillHackathonSelect();
+  fillBatchHackathonSelect();
+}
+
 async function loadOverview() {
+  // 1. Immediately render cached hackathons so screen never flashes 0 hackathons on reload
+  try {
+    const cached = localStorage.getItem('hj_hackathons_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        renderHackathonsList(parsed);
+      }
+    }
+  } catch {}
+
+  // 2. Fetch fresh data in a single sub-millisecond query
   try {
     const { data: hacks } = await api('/api/hackathons');
-    state.hackathons = hacks;
-    let submissions = 0, overrides = 0;
-    for (const h of hacks) {
-      try {
-        const { data } = await api(`/api/hackathons/${h.id}/submissions`);
-        submissions += data.length;
-        for (const s of data) {
-          try {
-            const d = await api(`/api/submissions/${s.id}`);
-            overrides += (d.data.audit_log || []).filter(a => a.action === 'score_override').length;
-          } catch {}
-        }
-      } catch {}
-    }
-    $('#stat-hackathons').textContent = hacks.length;
-    $('#stat-submissions').textContent = submissions;
-    $('#stat-overrides').textContent = overrides;
-    $('#hackathon-count').textContent = `${hacks.length} program${hacks.length === 1 ? '' : 's'}`;
-    $('#hackathon-list').innerHTML = hacks.map(h => `
-      <article class="hackathon-card" data-open-hack="${h.id}">
-        <div class="hackathon-card-top">
-          <span class="track-tag">${escapeHtml(h.track)}</span>
-          <span class="muted">ID ${h.id}</span>
-        </div>
-        <h4>${escapeHtml(h.name)}</h4>
-        <p>${escapeHtml(h.description || 'No description added.')} </p>
-        <div class="card-meta">
-          <span>◈ ${h.submission_count || 0} submission${h.submission_count === 1 ? '' : 's'}</span>
-          <strong>Open dashboard →</strong>
-        </div>
-      </article>
-    `).join('');
-    $('#empty-hackathons').classList.toggle('hidden', hacks.length > 0);
-    $('#hackathon-list').classList.toggle('hidden', hacks.length === 0);
-    $$('[data-open-hack]').forEach(el => el.addEventListener('click', () => openHackathon(Number(el.dataset.openHack))));
-    fillHackathonSelect();
-    fillBatchHackathonSelect();
+    renderHackathonsList(hacks);
+    try { localStorage.setItem('hj_hackathons_cache', JSON.stringify(hacks)); } catch {}
   } catch (err) {
-    toast(`Could not load workspace: ${err.message}`, 'error');
+    console.warn('Could not refresh hackathons from server:', err);
+    if (!state.hackathons || !state.hackathons.length) {
+      toast(`Could not load workspace: ${err.message}`, 'error');
+    }
   }
 }
 
@@ -332,6 +347,10 @@ async function openHackathon(id) {
     ]);
     state.currentHackathon = h;
     state.submissions = s;
+    try {
+      sessionStorage.setItem('hj_active_hackathon_id', String(id));
+      sessionStorage.setItem('hj_active_view', 'dashboard');
+    } catch {}
     navigate('dashboard');
     renderDashboard();
   } catch (err) {
@@ -1132,7 +1151,33 @@ $('#batch-run-again')?.addEventListener('click', () => {
 });
 
 
+
+// Prevent accidental refresh while batch evaluation is in progress
+window.addEventListener('beforeunload', (e) => {
+  if (state.batchEvaluating) {
+    e.preventDefault();
+    e.returnValue = 'An evaluation is currently running. If you leave or refresh, the evaluation will be interrupted.';
+    return e.returnValue;
+  }
+});
+
 renderCriteriaEditor();
 loadHealth();
-loadOverview();
+
+// Restore active hackathon or active view across refreshes
+const savedView = sessionStorage.getItem('hj_active_view');
+const savedHackId = sessionStorage.getItem('hj_active_hackathon_id');
+
+if (savedHackId) {
+  openHackathon(Number(savedHackId)).catch(() => {
+    loadOverview();
+  });
+} else if (savedView && savedView !== 'overview') {
+  navigate(savedView);
+  loadOverview();
+} else {
+  loadOverview();
+}
+
 checkCachedBatch();
+

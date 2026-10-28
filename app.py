@@ -467,7 +467,13 @@ def health():
 @app.get("/api/hackathons")
 def list_hackathons():
     with db() as con:
-        rows = con.execute("SELECT h.*, (SELECT COUNT(*) FROM submissions s WHERE s.hackathon_id=h.id) AS submission_count FROM hackathons h ORDER BY h.id DESC").fetchall()
+        rows = con.execute("""
+            SELECT h.*, 
+                   (SELECT COUNT(*) FROM submissions s WHERE s.hackathon_id = h.id) AS submission_count,
+                   (SELECT COUNT(*) FROM audit_log a JOIN submissions s ON a.submission_id = s.id WHERE s.hackathon_id = h.id AND a.action = 'score_override') AS override_count
+            FROM hackathons h 
+            ORDER BY h.id DESC
+        """).fetchall()
     return jsonify([json_row(r) for r in rows])
 
 
