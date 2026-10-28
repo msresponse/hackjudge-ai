@@ -60,6 +60,17 @@ class HackJudgeTests(unittest.TestCase):
             hj.github_repo_from_url('https://evil.example/github.com/owner/repo')
         self.assertEqual(hj.github_repo_from_url('https://github.com/owner/repo.git'), ('owner','repo'))
 
+    def test_inspect_demo_empty(self):
+        res = hj.inspect_demo("")
+        self.assertFalse(res['provided'])
+        self.assertIsNone(res['reachable'])
+
+    def test_inspect_demo_invalid_url(self):
+        res = hj.inspect_demo("ftp://not-http.example.com")
+        self.assertTrue(res['provided'])
+        self.assertFalse(res['reachable'])
+
 
 if __name__ == '__main__':
     unittest.main()
+
