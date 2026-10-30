@@ -558,10 +558,13 @@ async function openSubmission(id) {
           <p>Files tracked: ${num(ev.file_count)} · Branch: ${escapeHtml(repo.default_branch || '—')} · License: ${escapeHtml(repo.license || '—')}</p>
         </div>
         <div class="detail-box">
-          <h4>Live demo check</h4>
+          <h4>Live demo & website analysis</h4>
           <p>${escapeHtml((ev.demo_inspection || {}).message || 'No demo inspection data.')}</p>
-          ${(ev.demo_inspection || {}).title ? `<p>Page title: <b>${escapeHtml(ev.demo_inspection.title)}</b></p>` : ''}
-          ${(ev.demo_inspection || {}).text_preview ? `<p>Visible text preview: ${escapeHtml(ev.demo_inspection.text_preview)}</p>` : ''}
+          ${(ev.demo_inspection || {}).is_unedited_starter_template ? `<div class="caution-note" style="margin:8px 0;padding:8px 12px;font-size:0.85rem;">⚠️ Starter boilerplate detected: ${escapeHtml(ev.demo_inspection.starter_template_detail || 'Default template')}. Score penalized for lack of custom web UI.</div>` : ''}
+          ${(ev.demo_inspection || {}).title ? `<p style="margin:4px 0;">Title: <b>${escapeHtml(ev.demo_inspection.title)}</b></p>` : ''}
+          ${Array.isArray((ev.demo_inspection || {}).headings_detected) && (ev.demo_inspection.headings_detected.length) ? `<p style="margin:4px 0;"><small class="muted">Page Headings:</small> <i>${escapeHtml(ev.demo_inspection.headings_detected.join(' · '))}</i></p>` : ''}
+          ${(ev.demo_inspection || {}).interactive_elements ? `<p style="margin:4px 0;"><small class="muted">Interactive UI elements:</small> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.buttons)} buttons</span> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.forms)} forms</span> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.inputs)} inputs</span></p>` : ''}
+          ${(ev.demo_inspection || {}).text_preview ? `<details style="margin-top:8px;"><summary style="cursor:pointer;color:#b8a8ff;font-size:0.85rem;">View extracted website text (${(ev.demo_inspection.text_preview || '').length} chars) ▾</summary><p style="margin-top:6px;font-size:0.82rem;line-height:1.4;background:rgba(0,0,0,0.25);padding:8px;border-radius:6px;color:#cbd5e1;">${escapeHtml(ev.demo_inspection.text_preview)}</p></details>` : ''}
         </div>
         <div class="detail-box">
           <h4>Strengths</h4>

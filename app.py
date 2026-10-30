@@ -422,37 +422,72 @@ def collect_github_evidence(url):
 
 
 def inspect_demo(url):
+    """
+    Staff-Grade Website Inspector:
+    Deeply analyzes website content, interactive elements, headings, and checks
+    whether the live URL is a genuine project vs an empty starter template or 404.
+    """
     if not url:
         return {"provided": False, "reachable": None, "message": "No live demo URL was supplied."}
     ok, reason = validate_public_url(url)
     if not ok:
         return {"provided": True, "reachable": False, "message": reason}
     try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 HackJudge-AI/1.0"}, stream=True)
+        response = requests.get(
+            url, 
+            timeout=REQUEST_TIMEOUT, 
+            allow_redirects=True, 
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 HackJudge-AI/1.0"}, 
+            stream=True
+        )
         status = response.status_code
         ctype = response.headers.get("Content-Type", "")
         body = b""
-        if "text/html" in ctype.lower():
+        if "text/html" in ctype.lower() or not ctype:
             for chunk in response.iter_content(4096):
                 body += chunk
-                if len(body) >= 32000:
+                if len(body) >= 48000:
                     break
         response.close()
+        
         title = ""
         text_preview = ""
         framework = "Static HTML / Server-Rendered"
         is_hosting_error = False
         error_host_msg = ""
+        is_starter_template = False
+        starter_template_detail = ""
+        headings = []
+        interactive_elements = {"buttons": 0, "inputs": 0, "forms": 0, "canvases": 0, "navigation_links": 0}
+
         if body:
             html = body.decode(response.encoding or "utf-8", errors="replace")
+            low_html = html.lower()
+
+            # 1. Page Title
             m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
-            title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip()[:180] if m else ""
+            title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip()[:200] if m else ""
+
+            # 2. Extract Headings (h1, h2, h3)
+            raw_headings = re.findall(r"<h[1-3][^>]*>(.*?)</h[1-3]>", html, re.I | re.S)
+            for h in raw_headings[:8]:
+                clean_h = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", h)).strip()
+                if clean_h and len(clean_h) <= 120:
+                    headings.append(clean_h)
+
+            # 3. Interactive UI Elements
+            interactive_elements["buttons"] = len(re.findall(r"<button\b", html, re.I))
+            interactive_elements["inputs"] = len(re.findall(r"<input\b", html, re.I))
+            interactive_elements["forms"] = len(re.findall(r"<form\b", html, re.I))
+            interactive_elements["canvases"] = len(re.findall(r"<canvas\b", html, re.I))
+            interactive_elements["navigation_links"] = len(re.findall(r"<a\s+[^>]*href", html, re.I))
+
+            # 4. Visible Text Preview (Rich 2,500 chars)
             parser = VisibleText()
             parser.feed(html)
-            text_preview = " ".join(parser.parts)[:900]
-            
-            # Framework & SPA detection
-            low_html = html.lower()
+            text_preview = " ".join(parser.parts)[:2500]
+
+            # 5. Framework & SPA detection
             if "__next" in low_html or "_next/static" in low_html:
                 framework = "Next.js (SPA / SSR)"
             elif "react" in low_html or 'id="root"' in low_html or 'id="app"' in low_html:
@@ -463,8 +498,23 @@ def inspect_demo(url):
                 framework = "Vite App"
             elif "svelte" in low_html:
                 framework = "Svelte"
-                
-            # Hosting platform placeholder / 404 detection
+
+            # 6. Starter Template & Boilerplate Detection
+            starter_patterns = [
+                (r"vite\s*\+\s*react", "Default Vite + React starter template"),
+                (r"create next app", "Default Create-Next-App template"),
+                (r"edit\s+src/(app|index)\.(js|tsx?)", "Unedited boilerplate tutorial template"),
+                (r"welcome to your new expo app", "Unedited Expo template"),
+                (r"react app\s*edit\s*src/app", "Default create-react-app template"),
+                (r"this is the default landing page", "Unconfigured server/hosting default page")
+            ]
+            for pat, detail in starter_patterns:
+                if re.search(pat, low_html[:3000], re.I) or re.search(pat, title.lower(), re.I):
+                    is_starter_template = True
+                    starter_template_detail = detail
+                    break
+
+            # 7. Hosting platform placeholder / 404 detection
             err_patterns = [
                 "404: this page could not be found", "page not found", "deployment not found", 
                 "application error", "heroku | error", "site not found", "dns_probe_finished",
@@ -477,13 +527,25 @@ def inspect_demo(url):
                     break
 
         is_alive = (200 <= status < 400) and not is_hosting_error
-        msg = f"Live demo verified HTTP {status} ({framework})." if is_alive else (f"Warning: {error_host_msg}" if is_hosting_error else f"HTTP {status} response.")
+        if is_alive:
+            if is_starter_template:
+                msg = f"Live demo reachable (HTTP {status}), but detected as unedited boilerplate ({starter_template_detail})."
+            else:
+                inter_summary = f"{interactive_elements['buttons']} buttons, {interactive_elements['inputs']} inputs, {interactive_elements['forms']} forms"
+                msg = f"Live demo active HTTP {status} ({framework}, {inter_summary})."
+        else:
+            msg = f"Warning: {error_host_msg}" if is_hosting_error else f"HTTP {status} response."
+
         return {
             "provided": True,
             "reachable": is_alive,
             "http_status": status,
             "content_type": ctype,
             "title": title,
+            "headings_detected": headings,
+            "interactive_elements": interactive_elements,
+            "is_unedited_starter_template": is_starter_template,
+            "starter_template_detail": starter_template_detail,
             "text_preview": text_preview,
             "framework_detected": framework,
             "is_hosting_error": is_hosting_error,
@@ -569,7 +631,11 @@ def ai_assessment(hackathon, submission, evidence, demo):
         "2. Original Contribution vs Template: Actively separate starter kit/boilerplate (e.g. Vite default apps, template wrappers) from original custom engineering. Award points strictly for original code.\n"
         "3. Mock & Fake Detection (Hard Cap): If critical application functions return hardcoded mock objects, dummy arrays, or empty promises without real algorithmic computation or real backend integrations, cap Technical Execution at max 4.0 and flag 'Mocked / Synthetic Implementation' under risks.\n"
         "4. README vs Implementation Discrepancy: If the README touts complex capabilities (e.g. AI models, vector stores, microservices, auth) but the codebase contains only surface-level templates or stubs, cap Innovation & Execution at max 4.5 and document 'README Claim Mismatch' in risks.\n"
-        "5. Live Demo Quality: If the demo URL returns a hosting error, default deployment placeholder (e.g. Vercel/Render 404), or is unreachable, Product & Demo score cannot exceed 3.5.\n"
+        "5. Deep Live Website Evaluation (Content & Functional Verification):\n"
+        "   - Do NOT just look at whether the URL returned HTTP 200. Scrutinize the actual website content provided in demo_inspection (title, headings_detected, interactive_elements, and text_preview).\n"
+        "   - Semantic Topic Alignment: Does the website content genuinely match the submitted project's stated topic and hackathon track? If a submitter supplied an unrelated domain (e.g. google.com, wikipedia.org, or a commercial marketing site completely unrelated to their repository), flag 'Deceptive / Unrelated Demo URL' in risks and cap Product & Demo Quality at max 1.5.\n"
+        "   - Starter Template Detection: If demo_inspection.is_unedited_starter_template is true or headings indicate an unedited boilerplate (e.g., 'Vite + React - count is 0', 'Create Next App'), cap Product & Demo Quality at max 3.0.\n"
+        "   - Interactive Depth: Check interactive_elements (forms, inputs, buttons, canvases). A deployed website with working interactive controls, user forms, or data visualizations represents much higher engineering execution than a static text landing page.\n"
         "6. Timeline & Commit Integrity: Check commit_authenticity. A single commit dump of pre-existing code must be penalized for lack of hackathon sprint transparency.\n\n"
         "CALIBRATED SCORE SCALE (0.0 to 10.0 for each criterion):\n"
         "• 9.0 – 10.0 (Production Grade / Exceptional): Flawless architectural execution, substantial original algorithmic logic, clean error boundaries, comprehensive automated tests, working live demo. 10.0 is reserved for top 1% hackathon engineering.\n"
