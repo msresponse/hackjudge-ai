@@ -5,6 +5,7 @@ import json
 import os
 import re
 import socket
+import concurrent.futures
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -61,13 +62,14 @@ def now_iso():
 
 
 def db():
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=30.0)
     con.row_factory = sqlite3.Row
     return con
 
 
 def init_db():
     with db() as con:
+        con.execute("PRAGMA journal_mode=WAL;")
         con.executescript("""
         CREATE TABLE IF NOT EXISTS hackathons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -428,6 +430,7 @@ def baseline_assessment(hackathon, evidence, demo):
 def ai_assessment(hackathon, submission, evidence, demo):
     if not (AI_API_KEYS and AI_BASE_URL and AI_MODEL):
         return baseline_assessment(hackathon, evidence, demo), "evidence-baseline"
+    hackathon = dict(hackathon) if not isinstance(hackathon, dict) else hackathon
     criteria = json.loads(hackathon["criteria_json"])
     requirements = json.loads(hackathon["requirements_json"])
 
@@ -738,6 +741,70 @@ def diagnose_error(exc) -> dict:
     }
 
 
+def fetch_evidence_and_demo(github_url: str, demo_url: str):
+    """Option 1: Collect GitHub evidence and inspect live demo concurrently in parallel."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        evidence_future = executor.submit(collect_github_evidence, github_url)
+        demo_future = executor.submit(inspect_demo, demo_url)
+        evidence = evidence_future.result()
+        demo = demo_future.result()
+    evidence["demo_inspection"] = demo
+    return evidence, demo
+
+
+def run_evaluation_task(submission_id: int):
+    """Option 2: Worker task that executes complete assessment and persists results."""
+    with db() as con:
+        sub = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
+        if not sub:
+            return None, RuntimeError(f"Submission #{submission_id} not found.")
+        hackathon = con.execute("SELECT * FROM hackathons WHERE id=?", (sub["hackathon_id"],)).fetchone()
+        if not hackathon:
+            return None, RuntimeError("Hackathon not found.")
+
+    team = sub["team_name"]
+    project = sub["project_name"]
+    github_url = sub["github_url"]
+    demo_url = sub["demo_url"]
+    notes = sub["notes"]
+
+    try:
+        evidence, demo = fetch_evidence_and_demo(github_url, demo_url)
+        evaluation, method = ai_assessment(
+            hackathon,
+            {"team_name": team, "project_name": project, "github_url": github_url, "notes": notes},
+            evidence,
+            demo
+        )
+        with db() as con:
+            con.execute(
+                "UPDATE submissions SET status='EVALUATED', score=?, evaluation_json=?, evidence_json=?, assessment_method=?, updated_at=? WHERE id=?",
+                (evaluation["overall_score"], json.dumps(evaluation), json.dumps(evidence), method, now_iso(), submission_id)
+            )
+            con.execute(
+                "INSERT INTO audit_log(submission_id,action,actor,reason,old_value,new_value,created_at) VALUES(?,?,?,?,?,?,?)",
+                (submission_id, "assessment", "system", f"Initial assessment via {method}", "", str(evaluation["overall_score"]), now_iso())
+            )
+            row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
+        return row, None
+    except Exception as exc:
+        diag = diagnose_error(exc)
+        eval_payload = {
+            "error": diag["error_reason"],
+            "error_source": diag["error_source"],
+            "error_detail": diag["error_detail"],
+            "retryable": diag["retryable"],
+            "summary": f"Assessment failed ({diag['error_reason']}): {diag['error_detail']}"
+        }
+        with db() as con:
+            con.execute(
+                "UPDATE submissions SET status='ASSESSMENT_ERROR', evaluation_json=?, updated_at=? WHERE id=?",
+                (json.dumps(eval_payload), now_iso(), submission_id)
+            )
+            row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
+        return row, exc
+
+
 @app.post("/api/submissions")
 def create_submission():
     data = request.get_json(silent=True) or {}
@@ -764,31 +831,25 @@ def create_submission():
         hackathon = con.execute("SELECT * FROM hackathons WHERE id=?", (hackathon_id,)).fetchone()
         if not hackathon:
             return jsonify({"error": "Hackathon not found."}), 404
-        cur = con.execute("INSERT INTO submissions(hackathon_id,team_name,project_name,github_url,demo_url,notes,status,created_at,updated_at) VALUES(?,?,?,?,?,?, 'ANALYZING',?,?)", (hackathon_id, team, project, github_url, demo_url, notes, now_iso(), now_iso()))
+        cur = con.execute(
+            "INSERT INTO submissions(hackathon_id,team_name,project_name,github_url,demo_url,notes,status,created_at,updated_at) VALUES(?,?,?,?,?,?, 'ANALYZING',?,?)",
+            (hackathon_id, team, project, github_url, demo_url, notes, now_iso(), now_iso())
+        )
         submission_id = cur.lastrowid
-    try:
-        evidence = collect_github_evidence(github_url)
-        demo = inspect_demo(demo_url)
-        evidence["demo_inspection"] = demo
-        evaluation, method = ai_assessment(hackathon, {"team_name": team, "project_name": project, "notes": notes}, evidence, demo)
-        with db() as con:
-            con.execute("UPDATE submissions SET status='EVALUATED', score=?, evaluation_json=?, evidence_json=?, assessment_method=?, updated_at=? WHERE id=?", (evaluation["overall_score"], json.dumps(evaluation), json.dumps(evidence), method, now_iso(), submission_id))
-            con.execute("INSERT INTO audit_log(submission_id,action,actor,reason,old_value,new_value,created_at) VALUES(?,?,?,?,?,?,?)", (submission_id, "assessment", "system", f"Initial assessment via {method}", "", str(evaluation["overall_score"]), now_iso()))
-            row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
-        return jsonify(json_row(row)), 201
-    except Exception as exc:
-        diag = diagnose_error(exc)
-        eval_payload = {
-            "error": diag["error_reason"],
-            "error_source": diag["error_source"],
-            "error_detail": diag["error_detail"],
-            "retryable": diag["retryable"],
-            "summary": f"Assessment failed ({diag['error_reason']}): {diag['error_detail']}"
-        }
-        with db() as con:
-            con.execute("UPDATE submissions SET status='ASSESSMENT_ERROR', evaluation_json=?, updated_at=? WHERE id=?", (json.dumps(eval_payload), now_iso(), submission_id))
-            row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
-        return jsonify(json_row(row)), 502
+        pending_row = con.execute("SELECT * FROM submissions WHERE id=?", (submission_id,)).fetchone()
+
+    # Check if client explicitly requests synchronous evaluation (e.g. batch-mode or tests)
+    is_sync = (request.args.get("sync") == "true") or (data.get("sync") is True)
+    if is_sync:
+        result_row, err = run_evaluation_task(submission_id)
+        if err is not None:
+            return jsonify(json_row(result_row)), 502
+        return jsonify(json_row(result_row)), 201
+
+    # Option 2: Default asynchronous evaluation in background thread (< 100ms response)
+    worker = threading.Thread(target=run_evaluation_task, args=(submission_id,), daemon=True)
+    worker.start()
+    return jsonify(json_row(pending_row)), 202
 
 
 @app.get("/api/submissions/<int:submission_id>")

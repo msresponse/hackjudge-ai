@@ -416,11 +416,44 @@ async function updateDashboardAuditCount() {
   $('#dash-overrides').textContent = count;
 }
 
+const activePolls = new Set();
+async function pollSubmissionUntilComplete(id, hackathonId) {
+  if (activePolls.has(id)) return;
+  activePolls.add(id);
+
+  const maxAttempts = 150; // up to 5 minutes
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const { data: s } = await api(`/api/submissions/${id}`);
+      if (!s) break;
+      if (s.status !== 'ANALYZING') {
+        activePolls.delete(id);
+        if (state.selectedSubmission && state.selectedSubmission.id === id) {
+          await openSubmission(id);
+        }
+        if (state.currentHackathon && state.currentHackathon.id === hackathonId) {
+          await openHackathon(hackathonId);
+        }
+        if (s.status === 'EVALUATED') {
+          toast(`Evaluation complete for "${s.project_name}"! Score: ${s.score !== null ? Number(s.score).toFixed(1) : '-'} / 100`, 'success', 6000);
+        } else if (s.status === 'ASSESSMENT_ERROR') {
+          toast(`Assessment completed with errors for "${s.project_name}". Open to inspect.`, 'error', 7000);
+        }
+        return;
+      }
+    } catch (e) {
+      console.warn('Poll error:', e);
+    }
+  }
+  activePolls.delete(id);
+}
+
 $('#submission-form').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('#evaluate-submit');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Collecting evidence…';
+  btn.innerHTML = '<span class="spinner"></span> Submitting…';
   try {
     const { data, response } = await api('/api/submissions', {
       method: 'POST',
@@ -433,18 +466,24 @@ $('#submission-form').addEventListener('submit', async e => {
         notes: $('#submission-notes').value.trim()
       })
     });
-    if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
-      toast('Submission saved, but assessment failed. Open it to inspect the error; no score was invented.', 'error', 7000);
-    } else {
-      toast(data.assessment_method === 'evidence-baseline' ? 'Assessment complete using structural baseline. Configure an AI endpoint for semantic judging.' : 'Evidence collected and AI assessment complete.', 'success', 7000);
-    }
+
     $('#team-name').value = '';
     $('#project-name').value = '';
     $('#github-url').value = '';
     $('#demo-url').value = '';
     $('#submission-notes').value = '';
+
     await openHackathon(Number(data.hackathon_id));
     if (data.id) await openSubmission(data.id);
+
+    if (data.status === 'ANALYZING' || response.status === 202) {
+      toast('Submission queued! Evaluating in the background...', 'info', 4000);
+      pollSubmissionUntilComplete(data.id, Number(data.hackathon_id));
+    } else if (response.status === 502 || data.status === 'ASSESSMENT_ERROR') {
+      toast('Submission saved, but assessment failed. Open it to inspect the error; no score was invented.', 'error', 7000);
+    } else {
+      toast(data.assessment_method === 'evidence-baseline' ? 'Assessment complete using structural baseline. Configure an AI endpoint for semantic judging.' : 'Evidence collected and AI assessment complete.', 'success', 7000);
+    }
   } catch (err) {
     toast(err.message, 'error', 7000);
   } finally {
@@ -462,6 +501,23 @@ async function openSubmission(id) {
   try {
     const { data: s } = await api(`/api/submissions/${id}`);
     state.selectedSubmission = s;
+    if (s.status === 'ANALYZING') {
+      $('#detail-content').innerHTML = `
+        <div class="detail-head">
+          <div class="eyebrow">SUBMISSION #${s.id} · ${escapeHtml(s.team_name)}</div>
+          <h2>${escapeHtml(s.project_name)}</h2>
+          <p><a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open GitHub repository ↗</a> ${s.demo_url ? ` · <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open live demo ↗</a>` : ''}</p>
+        </div>
+        <div class="evaluating-indicator" style="background:rgba(184,168,255,0.08);border:1px solid rgba(184,168,255,0.25);border-radius:12px;padding:32px 20px;text-align:center;margin:24px 0;">
+          <span class="spinner" style="width:28px;height:28px;display:inline-block;margin-bottom:14px;"></span>
+          <h3 style="margin:0 0 8px 0;color:#f0eeff;font-size:1.2rem;">AI Assessment in Progress</h3>
+          <p class="muted" style="margin:0;font-size:0.95rem;max-width:550px;margin-inline:auto;">Inspecting GitHub repository and live demo in parallel. Calibrated evaluation against hackathon rubric is running and will update automatically.</p>
+        </div>
+      `;
+      navigate('detail');
+      pollSubmissionUntilComplete(s.id, s.hackathon_id);
+      return;
+    }
     const e = s.evaluation || {}, ev = s.evidence || {}, repo = ev.repository || {}, signals = ev.signals || {};
     const isBaseline = s.assessment_method === 'evidence-baseline';
     $('#detail-content').innerHTML = `
@@ -895,7 +951,8 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
           project_name: item.project_name,
           github_url: item.github_url,
           demo_url: item.demo_url,
-          notes: item.notes
+          notes: item.notes,
+          sync: true
         })
       });
 
@@ -1239,7 +1296,8 @@ $('#batch-retry-failed-btn')?.addEventListener('click', async () => {
           project_name: item.project_name,
           github_url: item.github_url,
           demo_url: item.demo_url,
-          notes: item.notes
+          notes: item.notes,
+          sync: true
         })
       });
 
