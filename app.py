@@ -15,6 +15,19 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
+# LangSmith -- traces every AI evaluation call to smith.langchain.com
+# Tracing is automatic once LANGCHAIN_TRACING_V2=true is set in .env.
+# If langsmith is not installed or the key is missing it silently does nothing.
+try:
+    from langsmith import traceable, get_current_run_tree
+    _LANGSMITH_AVAILABLE = True
+except ImportError:
+    _LANGSMITH_AVAILABLE = False
+    def traceable(*args, **kwargs):  # no-op decorator fallback
+        def decorator(fn): return fn
+        return decorator
+    def get_current_run_tree(): return None
+
 load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.getenv("DATABASE_PATH", os.path.join(BASE_DIR, "hackjudge.db"))
@@ -411,11 +424,27 @@ def baseline_assessment(hackathon, evidence, demo):
     return {"overall_score": score, "criteria": output, "summary": "This is a transparent structural baseline, not an AI evaluation. Configure AI_API_KEY, AI_BASE_URL and AI_MODEL to enable semantic assessment.", "strengths": ["Repository metadata and structure were collected."], "risks": ["Code correctness and live-demo behaviour have not been proven by this baseline."], "missing_evidence": [], "mandatory_requirements": []}
 
 
+@traceable(name="hackjudge-evaluation", run_type="llm")
 def ai_assessment(hackathon, submission, evidence, demo):
     if not (AI_API_KEYS and AI_BASE_URL and AI_MODEL):
         return baseline_assessment(hackathon, evidence, demo), "evidence-baseline"
     criteria = json.loads(hackathon["criteria_json"])
     requirements = json.loads(hackathon["requirements_json"])
+
+    # --- LangSmith metadata: visible in the dashboard as filter tags ---
+    _run = get_current_run_tree()
+    if _run is not None:
+        _run.extra["metadata"] = {
+            "hackathon_name": hackathon["name"],
+            "hackathon_track": hackathon.get("track", ""),
+            "team_name": submission["team_name"],
+            "project_name": submission["project_name"],
+            "github_url": submission["github_url"],
+            "model": AI_MODEL,
+            "key_pool_size": len(AI_API_KEYS),
+        }
+    # ------------------------------------------------------------------
+
     compact = {
         "hackathon": {"name": hackathon["name"], "track": hackathon["track"], "description": hackathon["description"]},
         "criteria": criteria,
