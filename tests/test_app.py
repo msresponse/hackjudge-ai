@@ -97,6 +97,20 @@ class HackJudgeTests(unittest.TestCase):
         self.assertEqual(resp_sub.status_code, 302)
         self.assertTrue(resp_sub.headers['Location'].endswith(f'/join/{hid}'))
 
+    def test_keep_alive_pinger(self):
+        # When no env var is set
+        os.environ.pop("RENDER_EXTERNAL_URL", None)
+        os.environ.pop("APP_URL", None)
+        self.assertIsNone(hj.start_keep_alive_pinger())
+
+        # When RENDER_EXTERNAL_URL is set
+        os.environ["RENDER_EXTERNAL_URL"] = "https://example.onrender.com"
+        worker = hj.start_keep_alive_pinger(initial_delay=9999, interval=9999)
+        self.assertIsNotNone(worker)
+        self.assertTrue(worker.is_alive())
+        self.assertTrue(worker.daemon)
+        os.environ.pop("RENDER_EXTERNAL_URL", None)
+
 
 if __name__ == '__main__':
     unittest.main()

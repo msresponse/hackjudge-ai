@@ -57,6 +57,33 @@ MAX_TOTAL_EVIDENCE_CHARS = 25000
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
 
+def start_keep_alive_pinger(initial_delay: int = 30, interval: int = 600):
+    """Keeps the service awake 24/7 on cloud platforms (e.g. Render) by periodically pinging /api/health."""
+    url = (os.getenv("RENDER_EXTERNAL_URL") or os.getenv("APP_URL") or "").strip()
+    if not url:
+        return None
+
+    ping_target = f"{url.rstrip('/')}/api/health"
+
+    def _pinger_loop():
+        time.sleep(initial_delay)
+        while True:
+            try:
+                requests.get(ping_target, timeout=20)
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    worker = threading.Thread(target=_pinger_loop, name="keep_alive_pinger", daemon=True)
+    worker.start()
+    return worker
+
+
+# Start keep-alive self-pinger if running on Render / cloud host
+if os.getenv("RENDER_EXTERNAL_URL") or os.getenv("APP_URL"):
+    start_keep_alive_pinger()
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
