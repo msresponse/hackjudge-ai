@@ -76,6 +76,19 @@ $$('[data-view]').forEach(b => b.addEventListener('click', () => navigate(b.data
 $$('[data-go]').forEach(b => b.addEventListener('click', () => navigate(b.dataset.go)));
 $('#top-create').addEventListener('click', () => navigate('organizer'));
 $('#back-overview').addEventListener('click', () => navigate('overview'));
+$('#dashboard-copy-link')?.addEventListener('click', () => {
+  if (!state.currentHackathon) return;
+  const link = `${window.location.origin}/join/${state.currentHackathon.id}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(() => {
+      toast(`Copied student link: ${link}`, 'success', 5000);
+    }).catch(() => {
+      prompt('Copy this student submission link:', link);
+    });
+  } else {
+    prompt('Copy this student submission link:', link);
+  }
+});
 $('#dashboard-submit').addEventListener('click', () => {
   navigate('submit');
   if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;

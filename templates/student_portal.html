@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if hackathon %}{{ hackathon.name }} - Student Project Submission | HackJudge AI{% else %}Project Submission | HackJudge AI{% endif %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .portal-body {
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% 0%, rgba(121, 98, 233, 0.12) 0%, transparent 60%), var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2.5rem 1rem 4rem;
+    }
+    .portal-container {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .portal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .portal-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .portal-logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--purple), var(--purple2));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      box-shadow: 0 4px 12px rgba(121, 98, 233, 0.3);
+    }
+    .portal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(169, 148, 255, 0.1);
+      color: var(--purple);
+      border: 1px solid rgba(169, 148, 255, 0.25);
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .hackathon-hero {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    }
+    .hackathon-hero::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--purple), var(--purple2), var(--green));
+    }
+    .hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .hero-title {
+      font-family: var(--display);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 0.5rem;
+      line-height: 1.2;
+    }
+    .hero-desc {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 1.5rem;
+    }
+    .criteria-box {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .criteria-header {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .criteria-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .criteria-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .criteria-weight {
+      font-family: var(--mono);
+      color: var(--purple);
+      font-weight: 600;
+      background: rgba(169, 148, 255, 0.15);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+    .student-tip {
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+    .form-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.25rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    }
+    .form-card-title {
+      font-family: var(--display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .form-card-subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0 0 1.75rem;
+    }
+    .locked-hackathon-notice {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: rgba(114, 224, 176, 0.08);
+      border: 1px solid rgba(114, 224, 176, 0.25);
+      color: var(--green);
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      margin-bottom: 1.75rem;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    .form-label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.88rem;
+      margin-bottom: 0.45rem;
+      color: var(--text);
+    }
+    .form-label .req {
+      color: var(--red);
+      margin-left: 0.2rem;
+    }
+    .form-hint {
+      display: block;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 0.35rem;
+      line-height: 1.4;
+    }
+    .form-input, .form-textarea {
+      width: 100%;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-family: var(--font);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .form-input:focus, .form-textarea:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px rgba(121, 98, 233, 0.2);
+      outline: none;
+    }
+    .form-textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+    .btn-submit-project {
+      width: 100%;
+      background: linear-gradient(135deg, var(--purple2), #6343dc);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      box-shadow: 0 4px 18px rgba(121, 98, 233, 0.35);
+      margin-top: 2rem;
+    }
+    .btn-submit-project:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(121, 98, 233, 0.5);
+    }
+    .btn-submit-project:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .alert-box {
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    .alert-error {
+      background: rgba(255, 139, 154, 0.12);
+      border: 1px solid rgba(255, 139, 154, 0.3);
+      color: #ff9da9;
+    }
+    .success-card {
+      background: var(--panel);
+      border: 1px solid rgba(114, 224, 176, 0.3);
+      border-radius: 16px;
+      padding: 3rem 2rem;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    }
+    .success-icon {
+      width: 64px;
+      height: 64px;
+      background: rgba(114, 224, 176, 0.15);
+      border: 2px solid var(--green);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      margin: 0 auto 1.5rem;
+      color: var(--green);
+    }
+    .success-title {
+      font-family: var(--display);
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 0 0.5rem;
+    }
+    .success-desc {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 520px;
+      margin: 0 auto 1.75rem;
+      line-height: 1.6;
+    }
+    .receipt-box {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      max-width: 500px;
+      margin: 0 auto 2rem;
+      text-align: left;
+    }
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.88rem;
+    }
+    .receipt-row:last-child {
+      border-bottom: none;
+    }
+    .receipt-label {
+      color: var(--muted);
+    }
+    .receipt-val {
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .spinner-sm {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body class="portal-body">
+  <div class="portal-container">
+    <nav class="portal-nav">
+      <div class="portal-logo">
+        <div class="portal-logo-icon">&#9878;</div>
+        <span>HackJudge <span style="color:var(--purple)">AI</span></span>
+      </div>
+      <div class="portal-badge">&#127891; Student Submission Portal</div>
+    </nav>
+
+    {% if error %}
+      <div class="alert-box alert-error">
+        <span style="font-size:1.4rem">&#9888;</span>
+        <div>
+          <b style="display:block; margin-bottom:0.25rem; font-size:1rem">Submission Link Unavailable</b>
+          <span>{{ error }} Please check the link provided by your hackathon organizers.</span>
+        </div>
+      </div>
+    {% else %}
+      <!-- HACKATHON HERO INFO -->
+      <section class="hackathon-hero">
+        <div class="hero-eyebrow">
+          <span class="portal-badge">&#127919; {{ hackathon.track }}</span>
+          <span style="color:var(--muted); font-size:0.85rem">Target Hackathon</span>
+        </div>
+        <h1 class="hero-title">{{ hackathon.name }}</h1>
+        {% if hackathon.description %}
+          <p class="hero-desc">{{ hackathon.description }}</p>
+        {% endif %}
+
+        {% if hackathon.criteria and hackathon.criteria|length > 0 %}
+          <div class="criteria-box">
+            <div class="criteria-header">&#9878; Evaluation Criteria &amp; Weights</div>
+            <div class="criteria-pills">
+              {% for c in hackathon.criteria %}
+                <div class="criteria-pill">
+                  <span>{{ c.name }}</span>
+                  <span class="criteria-weight">{{ c.weight }}%</span>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="student-tip">
+              <span>&#128161;</span>
+              <span><b>Judging Guidance:</b> HackJudge AI assesses your actual code repository, commits, and demo. Keep your README clear, organize your files cleanly, and showcase your best effort!</span>
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
+      <!-- SUBMISSION FORM -->
+      <section class="form-card" id="submission-card">
+        <h2 class="form-card-title">&#128640; Submit Your Project</h2>
+        <p class="form-card-subtitle">Fill in your team details and repository link to submit directly to <b>{{ hackathon.name }}</b>.</p>
+
+        <div class="locked-hackathon-notice">
+          <span>&#128274;</span>
+          <span><b>Assigned Hackathon:</b> {{ hackathon.name }} (Selection managed by organizers)</span>
+        </div>
+
+        <div id="form-error" class="alert-box alert-error hidden"></div>
+
+        <form id="student-submit-form" novalidate>
+          <input type="hidden" id="hackathon-id" value="{{ hackathon.id }}">
+
+          <div class="form-group">
+            <label class="form-label" for="team-name">Team Name / Lead Name <span class="req">*</span></label>
+            <input type="text" id="team-name" class="form-input" placeholder="e.g. CodeWarriors or Alex Rivera" required maxlength="120">
+            <span class="form-hint">The name under which your project will be displayed on the leaderboard.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="project-name">Project Title <span class="req">*</span></label>
+            <input type="text" id="project-name" class="form-input" placeholder="e.g. CampusConnect - Student Marketplace" required maxlength="120">
+            <span class="form-hint">A concise title for your hackathon project.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="github-url">GitHub Repository URL <span class="req">*</span></label>
+            <input type="url" id="github-url" class="form-input" placeholder="https://github.com/your-username/your-repo" required maxlength="500">
+            <span class="form-hint">Must be a public GitHub repository. Our engine inspects your commit history, source code, and dependencies.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="demo-url">Live Demo / Deployed URL <small style="color:var(--muted); font-weight:normal">(Optional)</small></label>
+            <input type="url" id="demo-url" class="form-input" placeholder="https://your-app.vercel.app or https://your-app.onrender.com" maxlength="500">
+            <span class="form-hint">Vercel, Netlify, Render, Streamlit, etc. If your project is not deployed online, feel free to leave this empty.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="notes">Project Notes / Elevator Pitch <small style="color:var(--muted); font-weight:normal">(Optional)</small></label>
+            <textarea id="notes" class="form-textarea" placeholder="Briefly describe what problem your project solves, what technologies you used, and what features you are most excited about..." maxlength="2000"></textarea>
+            <span class="form-hint">Share helpful notes or special setup steps for the judges.</span>
+          </div>
+
+          <button type="submit" class="btn-submit-project" id="btn-submit">
+            <span id="btn-icon">&#128640;</span>
+            <span id="btn-text">Submit Project</span>
+          </button>
+        </form>
+      </section>
+
+      <!-- SUCCESS SCREEN -->
+      <section class="success-card hidden" id="success-card">
+        <div class="success-icon">&#10003;</div>
+        <h2 class="success-title">Submission Received!</h2>
+        <p class="success-desc">Great job! Your project has been officially submitted to <b>{{ hackathon.name }}</b> and queued for AI-assisted evaluation.</p>
+
+        <div class="receipt-box">
+          <div class="receipt-row">
+            <span class="receipt-label">Submission Reference:</span>
+            <span class="receipt-val" id="receipt-id">#SUB--</span>
+          </div>
+          <div class="receipt-row">
+            <span class="receipt-label">Team:</span>
+            <span class="receipt-val" id="receipt-team">-</span>
+          </div>
+          <div class="receipt-row">
+            <span class="receipt-label">Project:</span>
+            <span class="receipt-val" id="receipt-project">-</span>
+          </div>
+          <div class="receipt-row">
+            <span class="receipt-label">Repository:</span>
+            <span class="receipt-val" id="receipt-repo">-</span>
+          </div>
+          <div class="receipt-row">
+            <span class="receipt-label">Status:</span>
+            <span class="receipt-val" style="color:var(--green)">&#9679; Queued for Judging</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-submit-project" id="btn-submit-another" style="max-width:320px; margin:0 auto; background:var(--panel2); border:1px solid var(--border); box-shadow:none;">
+          <span>&#8634; Submit Another Project</span>
+        </button>
+      </section>
+    {% endif %}
+  </div>
+
+  <script>
+    (function() {
+      const form = document.getElementById('student-submit-form');
+      if (!form) return;
+
+      const submitBtn = document.getElementById('btn-submit');
+      const btnText = document.getElementById('btn-text');
+      const btnIcon = document.getElementById('btn-icon');
+      const errBox = document.getElementById('form-error');
+      const submissionCard = document.getElementById('submission-card');
+      const successCard = document.getElementById('success-card');
+      const anotherBtn = document.getElementById('btn-submit-another');
+
+      function showError(msg) {
+        errBox.textContent = msg;
+        errBox.classList.remove('hidden');
+        errBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      function clearError() {
+        errBox.textContent = '';
+        errBox.classList.add('hidden');
+      }
+
+      function isValidGithub(url) {
+        return /^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/.test(url.trim());
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError();
+
+        const hackathonId = parseInt(document.getElementById('hackathon-id').value, 10);
+        const teamName = document.getElementById('team-name').value.trim();
+        const projectName = document.getElementById('project-name').value.trim();
+        const githubUrl = document.getElementById('github-url').value.trim();
+        const demoUrl = document.getElementById('demo-url').value.trim();
+        const notes = document.getElementById('notes').value.trim();
+
+        if (!teamName) {
+          showError('Please enter your Team Name or Lead Name.');
+          return;
+        }
+        if (!projectName) {
+          showError('Please enter your Project Title.');
+          return;
+        }
+        if (!githubUrl) {
+          showError('Please enter your GitHub repository URL.');
+          return;
+        }
+        if (!isValidGithub(githubUrl)) {
+          showError('Invalid GitHub URL. Format should be: https://github.com/username/repository');
+          return;
+        }
+
+        // Disable button and show spinner
+        submitBtn.disabled = true;
+        btnIcon.className = 'spinner-sm';
+        btnIcon.innerHTML = '';
+        btnText.textContent = 'Submitting project...';
+
+        try {
+          const resp = await fetch('/api/submissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hackathon_id: hackathonId,
+              team_name: teamName,
+              project_name: projectName,
+              github_url: githubUrl,
+              demo_url: demoUrl,
+              notes: notes
+            })
+          });
+
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            throw new Error(data.error || `Server returned error (${resp.status})`);
+          }
+
+          // Populate success screen
+          document.getElementById('receipt-id').textContent = '#SUB-' + (data.id || 'NEW');
+          document.getElementById('receipt-team').textContent = teamName;
+          document.getElementById('receipt-project').textContent = projectName;
+          document.getElementById('receipt-repo').textContent = githubUrl;
+
+          submissionCard.classList.add('hidden');
+          successCard.classList.remove('hidden');
+          successCard.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (err) {
+          showError(err.message || 'Failed to submit. Please check your internet connection or verify your GitHub link.');
+        } finally {
+          submitBtn.disabled = false;
+          btnIcon.className = '';
+          btnIcon.innerHTML = '&#128640;';
+          btnText.textContent = 'Submit Project';
+        }
+      });
+
+      if (anotherBtn) {
+        anotherBtn.addEventListener('click', () => {
+          form.reset();
+          clearError();
+          successCard.classList.add('hidden');
+          submissionCard.classList.remove('hidden');
+          submissionCard.scrollIntoView({ behavior: 'smooth' });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

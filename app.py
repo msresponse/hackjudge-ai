@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 # LangSmith -- traces every AI evaluation call to smith.langchain.com
 # Tracing is automatic once LANGCHAIN_TRACING_V2=true is set in .env.
@@ -739,6 +739,31 @@ def json_row(row):
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/join/<int:hackathon_id>")
+def student_portal(hackathon_id: int):
+    with db() as con:
+        hackathon = con.execute("SELECT * FROM hackathons WHERE id=?", (hackathon_id,)).fetchone()
+        if not hackathon:
+            return render_template("student_portal.html", hackathon=None, error="Hackathon not found."), 404
+
+        hackathon_dict = dict(hackathon)
+        try:
+            hackathon_dict["criteria"] = json.loads(hackathon_dict.get("criteria_json") or "[]")
+        except Exception:
+            hackathon_dict["criteria"] = []
+
+        return render_template("student_portal.html", hackathon=hackathon_dict, error=None)
+
+
+@app.get("/submit")
+def submit_redirect():
+    with db() as con:
+        latest = con.execute("SELECT id FROM hackathons ORDER BY id DESC LIMIT 1").fetchone()
+        if not latest:
+            return render_template("student_portal.html", hackathon=None, error="No active hackathon found. Please contact the organizers."), 404
+        return redirect(f"/join/{latest['id']}")
 
 
 @app.get("/api/health")

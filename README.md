@@ -63,7 +63,7 @@ See `requirements.txt` for dependencies.
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/suraj-creator-11/HackJudge-AI.git
+git clone https://github.com/msresponse/HackJudge-AI.git
 cd HackJudge-AI
 ```
 
@@ -234,4 +234,4 @@ This project is distributed under the MIT License. See the `LICENSE` file.
 
 ## 12. GitHub Repository
 
-https://github.com/suraj-creator-11/HackJudge-AI
+https://github.com/msresponse/HackJudge-AI

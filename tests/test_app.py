@@ -70,6 +70,33 @@ class HackJudgeTests(unittest.TestCase):
         self.assertTrue(res['provided'])
         self.assertFalse(res['reachable'])
 
+    def test_student_portal_and_submit_redirect(self):
+        # When no hackathon exists
+        resp = self.client.get('/submit')
+        self.assertEqual(resp.status_code, 404)
+        resp_join = self.client.get('/join/999')
+        self.assertEqual(resp_join.status_code, 404)
+
+        # Create a hackathon
+        h = self.client.post('/api/hackathons', json={
+            "name": "Freshers Hack 2026",
+            "track": "Web Dev",
+            "description": "First-year student hackathon",
+            "criteria": [{"name": "Execution", "description": "Working code", "weight": 100}]
+        }).json
+        hid = h['id']
+
+        # Check /join/<hid> renders successfully with hackathon title
+        resp = self.client.get(f'/join/{hid}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Freshers Hack 2026", resp.data)
+        self.assertIn(b"Student Submission Portal", resp.data)
+
+        # Check /submit redirects to /join/<latest_id>
+        resp_sub = self.client.get('/submit')
+        self.assertEqual(resp_sub.status_code, 302)
+        self.assertTrue(resp_sub.headers['Location'].endswith(f'/join/{hid}'))
+
 
 if __name__ == '__main__':
     unittest.main()
