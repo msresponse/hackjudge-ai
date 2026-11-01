@@ -307,11 +307,13 @@ async function loadHealth() {
   try {
     const { data } = await api('/api/health');
     if (data.ai_configured) {
-      $('#ai-status').textContent = 'AI model configured';
+      const modelCount = data.models_count || (data.ai_models ? data.ai_models.length : 1);
+      $('#ai-status').textContent = modelCount > 1 ? `${modelCount} AI Models Active` : 'AI model configured';
       const keyCount = data.api_keys_loaded ? ` (${data.api_keys_loaded} keys pooled)` : '';
-      $('#ai-detail').textContent = (data.ai_model || 'Semantic assessment enabled') + keyCount;
+      const modelLabel = modelCount > 1 ? `${modelCount} Models Randomized` : (data.ai_model || 'Semantic assessment enabled');
+      $('#ai-detail').textContent = `${modelLabel}${keyCount}`;
       $('#stat-mode').textContent = 'AI review';
-      $('#stat-mode-foot').textContent = 'Semantic scoring via configured endpoint';
+      $('#stat-mode-foot').textContent = 'Multi-model random scoring via configured endpoint';
     } else {
       $('#ai-status').textContent = 'Evidence baseline mode';
       $('#ai-detail').textContent = 'AI endpoint not configured';
@@ -324,6 +326,85 @@ async function loadHealth() {
   }
 }
 
+let currentHackathonStream = null;
+
+function connectHackathonStream(hid) {
+  if (currentHackathonStream) {
+    try { currentHackathonStream.close(); } catch {}
+    currentHackathonStream = null;
+  }
+  if (!window.EventSource) return;
+  try {
+    currentHackathonStream = new EventSource(`/api/hackathons/${hid}/stream`);
+    currentHackathonStream.addEventListener('submission_created', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        toast(`New submission: ${d.project_name} (${d.team_name})`, 'info');
+      } catch {}
+      if (state.currentHackathon && state.currentHackathon.id === hid) {
+        renderActiveHackathonOverview(state.currentHackathon);
+      }
+    });
+    currentHackathonStream.addEventListener('submission_evaluated', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        toast(`Evaluated: ${d.project_name} (Score: ${Number(d.score).toFixed(1)}/100)`, 'success');
+      } catch {}
+      if (state.currentHackathon && state.currentHackathon.id === hid) {
+        renderActiveHackathonOverview(state.currentHackathon);
+      }
+      if (state.selectedSubmission) {
+        openSubmission(state.selectedSubmission.id);
+      }
+    });
+    currentHackathonStream.addEventListener('submission_reevaluated', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        toast(`Re-evaluating: ${d.project_name}...`, 'info');
+      } catch {}
+      if (state.currentHackathon && state.currentHackathon.id === hid) {
+        renderActiveHackathonOverview(state.currentHackathon);
+      }
+    });
+    currentHackathonStream.addEventListener('score_updated', () => {
+      if (state.currentHackathon && state.currentHackathon.id === hid) {
+        renderActiveHackathonOverview(state.currentHackathon);
+      }
+    });
+    currentHackathonStream.addEventListener('submission_error', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        toast(`Evaluation error on project #${d.submission_id}: ${d.error}`, 'error');
+      } catch {}
+      if (state.currentHackathon && state.currentHackathon.id === hid) {
+        renderActiveHackathonOverview(state.currentHackathon);
+      }
+    });
+  } catch (err) {
+    console.warn('SSE stream error:', err);
+  }
+}
+
+window.reevaluateProject = async function(id) {
+  if (!confirm(`Trigger AI re-evaluation for submission #${id}? Fresh repository evidence will be collected.`)) return;
+  try {
+    toast(`Queuing re-evaluation for #${id}...`, 'info');
+    await api(`/api/submissions/${id}/reevaluate`, {
+      method: 'POST',
+      body: JSON.stringify({ actor: 'Judge/Admin' })
+    });
+    toast(`Submission #${id} re-evaluation queued!`, 'success');
+    if (state.currentHackathon) {
+      renderActiveHackathonOverview(state.currentHackathon);
+    }
+    if (state.selectedSubmission && state.selectedSubmission.id === id) {
+      openSubmission(id);
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+};
+
 async function switchActiveHackathon(id) {
   const h = state.hackathons.find(x => x.id === id);
   if (!h) return;
@@ -333,6 +414,104 @@ async function switchActiveHackathon(id) {
   } catch {}
   await renderActiveHackathonOverview(h);
 }
+
+function renderQueueTable(subs) {
+  const queueTable = $('#queue-table');
+  const queueEmpty = $('#queue-empty');
+  const queueBody = $('#queue-table-body');
+  if (!queueBody) return;
+
+  const searchInput = $('#queue-search-input');
+  const searchClear = $('#queue-search-clear');
+  const q = (searchInput && searchInput.value || '').trim().toLowerCase();
+
+  if (searchClear) {
+    if (q) searchClear.classList.remove('hidden');
+    else searchClear.classList.add('hidden');
+  }
+
+  // Filter based on roll number, student/team name, or project name - Just these three!
+  const filtered = q ? subs.filter(x => {
+    const roll = (x.roll_number || '').toLowerCase();
+    const name = (x.team_name || '').toLowerCase();
+    const proj = (x.project_name || '').toLowerCase();
+    return roll.includes(q) || name.includes(q) || proj.includes(q);
+  }) : subs;
+
+  const countEl = $('#queue-count');
+  if (countEl) {
+    countEl.textContent = `${filtered.length}${q ? ` of ${subs.length}` : ''} project${filtered.length === 1 ? '' : 's'}`;
+  }
+
+  if (filtered.length === 0) {
+    if (subs.length === 0) {
+      queueTable.classList.add('hidden');
+      queueEmpty.classList.remove('hidden');
+      const p = queueEmpty.querySelector('p');
+      if (p) p.textContent = 'No projects submitted to this hackathon yet.';
+    } else {
+      queueTable.classList.remove('hidden');
+      queueEmpty.classList.add('hidden');
+      queueBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">
+            No projects matching "<b>${escapeHtml(q)}</b>" found across roll number, team name, or project title.
+          </td>
+        </tr>
+      `;
+    }
+  } else {
+    queueTable.classList.remove('hidden');
+    queueEmpty.classList.add('hidden');
+    queueBody.innerHTML = filtered.slice(0, 50).map((x) => {
+      const score = x.score === null || x.score === undefined ? '—' : Number(x.score).toFixed(1);
+      const statusClass = x.status === 'EVALUATED' ? 'evaluated' : x.status === 'ANALYZING' ? 'analyzing' : x.status === 'REJECTED' ? 'rejected' : x.status === 'ASSESSMENT_ERROR' ? 'error' : 'received';
+      const statusLabel = x.status === 'EVALUATED' ? 'Active Best' : x.status === 'ANALYZING' ? 'AI Evaluating' : x.status === 'REJECTED' ? 'Superseded' : x.status === 'ASSESSMENT_ERROR' ? 'Needs Attention' : 'Submitted';
+      const repoShort = x.github_url.replace('https://github.com/', '').replace(/\/$/, '');
+      const sim = (x.evidence && x.evidence.similarity_check && x.evidence.similarity_check.has_high_similarity) ? x.evidence.similarity_check : null;
+      return `
+        <tr>
+          <td>
+            <div class="queue-project-cell">
+              <span class="queue-project-name">${escapeHtml(x.project_name)}</span>
+              ${sim ? `<span class="badge-similarity-warning" title="${escapeHtml(sim.warning)}" style="background:var(--crest-red-subtle);color:var(--crest-red-light);border:1px solid var(--crest-red-border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-block;margin-top:2px;">⚠️ ${sim.similarity_percentage}% Code Overlap</span>` : ''}
+              <a href="${escapeHtml(x.github_url)}" target="_blank" rel="noopener noreferrer" class="queue-project-repo">↗ ${escapeHtml(repoShort)}</a>
+            </div>
+          </td>
+          <td>
+            <div>
+              <span class="muted" style="font-weight:500;">${escapeHtml(x.team_name)}</span>
+              ${x.roll_number ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--teal-light);margin-top:2px;">ID: ${escapeHtml(x.roll_number)}</div>` : ''}
+            </div>
+          </td>
+          <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+          <td><span class="score-badge">${score}</span></td>
+          <td><span class="method-tag ${x.assessment_method === 'ai' ? '' : 'baseline'}">${x.assessment_method === 'ai' ? 'AI' : 'Baseline'}</span></td>
+          <td style="text-align:right">
+            <div style="display:inline-flex;align-items:center;gap:6px;">
+              <button class="button button-secondary small" style="padding:4px 9px;font-size:11px;" title="Re-evaluate project with AI" onclick="event.stopPropagation(); reevaluateProject(${x.id})">↻ Re-eval</button>
+              <button class="small-button" onclick="openSubmission(${x.id})">Review &amp; Inspect →</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
+// Queue search bar listener registration
+document.addEventListener('DOMContentLoaded', () => {
+  $('#queue-search-input')?.addEventListener('input', () => {
+    renderQueueTable(state.activeSubmissions || []);
+  });
+  $('#queue-search-clear')?.addEventListener('click', () => {
+    const input = $('#queue-search-input');
+    if (input) {
+      input.value = '';
+      renderQueueTable(state.activeSubmissions || []);
+    }
+  });
+});
 
 async function renderActiveHackathonOverview(h) {
   if (!h) {
@@ -352,6 +531,9 @@ async function renderActiveHackathonOverview(h) {
     $('#activity-feed').innerHTML = '<p class="muted" style="padding:16px;text-align:center;">No active events.</p>';
     return;
   }
+
+  // Connect real-time Server-Sent Events stream
+  connectHackathonStream(h.id);
 
   // Update Sidebar Select
   const sideSelect = $('#sidebar-hackathon-select');
@@ -392,41 +574,8 @@ async function renderActiveHackathonOverview(h) {
     $('#stat-submissions').textContent = total;
 
     // Update Project Queue Table
-    const queueTable = $('#queue-table');
-    const queueEmpty = $('#queue-empty');
-    const queueBody = $('#queue-table-body');
-    $('#queue-count').textContent = `${total} project${total === 1 ? '' : 's'}`;
-
-    if (total === 0) {
-      queueTable.classList.add('hidden');
-      queueEmpty.classList.remove('hidden');
-    } else {
-      queueTable.classList.remove('hidden');
-      queueEmpty.classList.add('hidden');
-      queueBody.innerHTML = subs.slice(0, 10).map((x, i) => {
-        const score = x.score === null || x.score === undefined ? '—' : Number(x.score).toFixed(1);
-        const statusClass = x.status === 'EVALUATED' ? 'evaluated' : x.status === 'ANALYZING' ? 'analyzing' : x.status === 'ASSESSMENT_ERROR' ? 'error' : 'received';
-        const statusLabel = x.status === 'EVALUATED' ? 'Ready for Review' : x.status === 'ANALYZING' ? 'AI Evaluating' : x.status === 'ASSESSMENT_ERROR' ? 'Needs Attention' : 'Submitted';
-        const repoShort = x.github_url.replace('https://github.com/', '').replace(/\/$/, '');
-        return `
-          <tr>
-            <td>
-              <div class="queue-project-cell">
-                <span class="queue-project-name">${escapeHtml(x.project_name)}</span>
-                <a href="${escapeHtml(x.github_url)}" target="_blank" rel="noopener noreferrer" class="queue-project-repo">↗ ${escapeHtml(repoShort)}</a>
-              </div>
-            </td>
-            <td><span class="muted">${escapeHtml(x.team_name)}</span></td>
-            <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-            <td><span class="score-badge">${score}</span></td>
-            <td><span class="method-tag ${x.assessment_method === 'ai' ? '' : 'baseline'}">${x.assessment_method === 'ai' ? 'AI' : 'Baseline'}</span></td>
-            <td style="text-align:right">
-              <button class="small-button" onclick="openSubmission(${x.id})">Review &amp; Inspect →</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
+    state.activeSubmissions = subs;
+    renderQueueTable(subs);
 
     // Update Activity Stream
     const feed = $('#activity-feed');
@@ -689,6 +838,7 @@ $('#submission-form').addEventListener('submit', async e => {
         hackathon_id: $('#submission-hackathon').value,
         team_name: $('#team-name').value.trim(),
         project_name: $('#project-name').value.trim(),
+        roll_number: ($('#roll-number') ? $('#roll-number').value.trim() : ''),
         github_url: $('#github-url').value.trim(),
         demo_url: $('#demo-url').value.trim(),
         notes: $('#submission-notes').value.trim()
@@ -697,6 +847,7 @@ $('#submission-form').addEventListener('submit', async e => {
 
     $('#team-name').value = '';
     $('#project-name').value = '';
+    if ($('#roll-number')) $('#roll-number').value = '';
     $('#github-url').value = '';
     $('#demo-url').value = '';
     $('#submission-notes').value = '';
@@ -759,18 +910,36 @@ async function openSubmission(id) {
         <h2>${escapeHtml(s.project_name)}</h2>
         <div class="workbench-header-links">
           <span>Team: <b>${escapeHtml(s.team_name)}</b></span>
+          ${s.roll_number ? `<span class="metric-divider">•</span> <span>Roll No: <b style="color:var(--teal-light);font-family:var(--font-mono);">${escapeHtml(s.roll_number)}</b></span>` : ''}
           <span class="metric-divider">•</span>
           <a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer">↗ GitHub Repository</a>
           ${s.demo_url ? `<span class="metric-divider">•</span> <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer">↗ Live Demo</a>` : ''}
           <span class="metric-divider">•</span>
-          <span class="status-badge ${s.status === 'EVALUATED' ? 'evaluated' : 'error'}">${s.status === 'EVALUATED' ? 'Ready for Review' : escapeHtml(s.status)}</span>
+          <span class="status-badge ${s.status === 'EVALUATED' ? 'evaluated' : s.status === 'REJECTED' ? 'rejected' : 'error'}">${s.status === 'EVALUATED' ? 'Active Best' : s.status === 'REJECTED' ? 'Superseded' : escapeHtml(s.status)}</span>
+          <span class="metric-divider">•</span>
+          <button class="button button-secondary small" style="padding:3px 9px;font-size:11px;" onclick="reevaluateProject(${s.id})">↻ Re-evaluate with AI</button>
         </div>
       </div>
+
+      ${s.status === 'REJECTED' ? `
+        <div class="detail-box" style="margin:16px 0;background:rgba(239, 68, 68, 0.08);border:1px solid rgba(239, 68, 68, 0.3);border-radius:8px;padding:12px 16px;">
+          <h4 style="margin:0 0 4px;font-size:12px;color:#f87171;font-weight:700;">🚫 SUBMISSION SUPERSEDED / REJECTED</h4>
+          <p style="margin:0;font-size:12px;color:var(--text-primary);">${escapeHtml(e.rejection_reason || 'This submission was superseded because another attempt for this student roll number scored higher.')}</p>
+        </div>
+      ` : ''}
 
       <div class="split-screen-grid">
         <!-- LEFT PANEL: PROJECT EVIDENCE -->
         <div class="workbench-col-evidence">
           <div class="section-tag" style="margin-bottom:10px;">01 / CODE EVIDENCE</div>
+
+          ${(ev.similarity_check && ev.similarity_check.has_high_similarity) ? `
+            <div class="detail-box" style="margin-bottom:16px;background:var(--crest-red-subtle);border-color:var(--crest-red-border);">
+              <h4 style="margin:0 0 6px;font-size:11.5px;color:var(--crest-red-light);font-weight:700;">⚠️ CODE OVERLAP / SIMILARITY ALERT (${ev.similarity_check.similarity_percentage}%)</h4>
+              <p style="margin:0 0 6px;font-size:11.5px;color:var(--text-primary);">${escapeHtml(ev.similarity_check.warning || 'High code overlap detected with another submission.')}</p>
+              <small class="muted" style="font-size:10.5px;">Matched Project: #${ev.similarity_check.matched_submission_id} (${escapeHtml(ev.similarity_check.matched_team_name)} — ${escapeHtml(ev.similarity_check.matched_project_name)})</small>
+            </div>
+          ` : ''}
 
           <!-- Quick Stats Grid -->
           <div class="evidence-stats-grid">
@@ -787,6 +956,18 @@ async function openSubmission(id) {
               <small>GITHUB STARS</small>
             </div>
           </div>
+
+          ${(ev.static_analysis && ev.static_analysis.ast_analysis && ev.static_analysis.ast_analysis.python_files_analyzed) ? `
+            <div class="detail-box" style="margin-bottom:16px;">
+              <h4 style="margin:0 0 8px;font-size:12px;color:var(--teal-light);">AST STATIC CODE VERIFICATION</h4>
+              <p style="margin:0 0 4px;font-size:11.5px;color:var(--text-secondary);">
+                <b>${ev.static_analysis.ast_analysis.ast_functions_count}</b> active functions, 
+                <b>${ev.static_analysis.ast_analysis.ast_stubs_count}</b> stubs, 
+                <b>${ev.static_analysis.ast_analysis.ast_models.length}</b> data models.
+              </p>
+              ${ev.static_analysis.ast_analysis.ast_routes.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Routes: <code>${ev.static_analysis.ast_analysis.ast_routes.slice(0, 5).map(escapeHtml).join(', ')}</code></div>` : ''}
+            </div>
+          ` : ''}
 
           <!-- Repository Signals -->
           <div class="detail-box" style="margin-bottom:16px;">
@@ -834,7 +1015,7 @@ async function openSubmission(id) {
               <small class="muted" style="font-size:10.5px;">CALIBRATED FINAL SCORE</small>
             </div>
             <div class="score-hero-meta">
-              <b>${isBaseline ? 'Structural Baseline' : s.assessment_method === 'ai' ? 'Gemma 4 AI Evaluation' : 'Score Pending'}</b>
+              <b>${isBaseline ? 'Structural Baseline' : s.assessment_method === 'ai' ? (e.model_used ? `${escapeHtml(e.model_used)} AI Evaluation` : 'AI Evaluation') : 'Score Pending'}</b>
               <small>${escapeHtml(e.summary ? (e.summary.slice(0, 140) + '...') : (e.error || 'No assessment summary.'))}</small>
             </div>
           </div>
@@ -964,6 +1145,7 @@ function parseCSV(text) {
   const projIdx = findCol(['project name', 'project_name', 'project', 'title', 'app name', 'app']);
   const repoIdx = findCol(['github repository link', 'github link', 'github url', 'github', 'repository link', 'repository', 'repo url', 'repo']);
   const teamIdx = findCol(['team name', 'team_name', 'team', 'author', 'participant', 'name', 'submitted by']);
+  const rollIdx = findCol(['roll number', 'roll_number', 'roll no', 'roll', 'student id', 'student_id', 'reg no', 'registration']);
   const demoIdx = findCol(['live demo url', 'demo url', 'demo link', 'demo', 'website']);
   const notesIdx = findCol(['description', 'notes', 'about', 'summary']);
 
@@ -979,12 +1161,14 @@ function parseCSV(text) {
     if (!repo) continue;
     const proj = (projIdx !== -1 && r[projIdx] ? r[projIdx].trim() : '') || `Project ${i}`;
     const team = (teamIdx !== -1 && r[teamIdx] ? r[teamIdx].trim() : '') || `Team ${i}`;
+    const roll = (rollIdx !== -1 && r[rollIdx] ? r[rollIdx].trim() : '');
     const demo = demoIdx !== -1 && r[demoIdx] ? r[demoIdx].trim() : '';
     const notes = notesIdx !== -1 && r[notesIdx] ? r[notesIdx].trim() : '';
     results.push({
       project_name: proj,
       github_url: repo,
       team_name: team,
+      roll_number: roll,
       demo_url: demo,
       notes: notes
     });
@@ -1253,6 +1437,7 @@ $('#batch-start-btn')?.addEventListener('click', async () => {
           hackathon_id: hackId,
           team_name: item.team_name,
           project_name: item.project_name,
+          roll_number: item.roll_number || '',
           github_url: item.github_url,
           demo_url: item.demo_url,
           notes: item.notes,
@@ -1598,6 +1783,7 @@ $('#batch-retry-failed-btn')?.addEventListener('click', async () => {
           hackathon_id: hackId,
           team_name: item.team_name,
           project_name: item.project_name,
+          roll_number: item.roll_number || '',
           github_url: item.github_url,
           demo_url: item.demo_url,
           notes: item.notes,
@@ -1663,6 +1849,13 @@ window.addEventListener('beforeunload', (e) => {
     e.returnValue = 'An evaluation is currently running. If you leave or refresh, the evaluation will be interrupted.';
     return e.returnValue;
   }
+});
+
+$('#btn-admin-logout')?.addEventListener('click', async () => {
+  try {
+    await fetch('/admin/logout', { method: 'POST' });
+  } catch (e) {}
+  window.location.href = '/admin';
 });
 
 renderCriteriaEditor();

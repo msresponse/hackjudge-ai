@@ -17,7 +17,7 @@
          ===================================================================== -->
     <aside class="sidebar">
       <div class="sidebar-top">
-        <a class="brand" href="/">
+        <a class="brand" href="/admin">
           <div class="brand-mark">HJ</div>
           <div class="brand-text">
             <span class="brand-title">HackJudge AI</span>
@@ -61,6 +61,10 @@
             <b id="ai-status">AI SYSTEM READY</b>
             <small id="ai-detail">Configured Model</small>
           </div>
+        </div>
+        <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-subtle, #1e293b);">
+          <a href="/submit" target="_blank" style="font-size: 11px; color: var(--text-muted, #94a3b8); text-decoration: none;">Student Portal ↗</a>
+          <button id="btn-admin-logout" style="background: none; border: none; color: #ef4444; font-size: 11px; cursor: pointer; padding: 2px 4px; font-weight: 600;">Sign Out</button>
         </div>
       </div>
     </aside>
@@ -193,12 +197,19 @@
               </div>
             </div>
 
+            <!-- Queue Real-time Search Filter -->
+            <div class="queue-search-container" style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:6px;padding:6px 12px;">
+              <span style="color:var(--text-muted);font-size:13px;">🔍</span>
+              <input type="text" id="queue-search-input" placeholder="Search by roll number, student/team name, or project title..." style="background:transparent;border:none;outline:none;color:var(--text-primary);font-size:12px;width:100%;font-family:inherit;" />
+              <button id="queue-search-clear" class="text-button hidden" style="font-size:11px;color:var(--text-muted);cursor:pointer;padding:0 4px;">✕</button>
+            </div>
+
             <div class="table-container">
               <table class="data-table" id="queue-table">
                 <thead>
                   <tr>
                     <th>Project</th>
-                    <th>Team</th>
+                    <th>Team &amp; Roll No.</th>
                     <th>Status</th>
                     <th>Score</th>
                     <th>Method</th>
@@ -393,7 +404,7 @@
                 </select>
               </div>
 
-              <div class="form-grid-2">
+              <div class="form-grid-3">
                 <div class="field-group">
                   <label for="team-name">Team Name</label>
                   <input id="team-name" required maxlength="120" placeholder="e.g. Sapiens Devs">
@@ -401,6 +412,10 @@
                 <div class="field-group">
                   <label for="project-name">Project Name</label>
                   <input id="project-name" required maxlength="120" placeholder="e.g. CampusGrid">
+                </div>
+                <div class="field-group">
+                  <label for="roll-number">Student Roll No. / ID</label>
+                  <input id="roll-number" maxlength="60" placeholder="e.g. 21BCS1042">
                 </div>
               </div>
 
