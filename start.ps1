@@ -3,7 +3,11 @@ Set-Location $PSScriptRoot
 
 if (-not (Test-Path '.venv\Scripts\python.exe')) {
     Write-Host 'Creating Python virtual environment...' -ForegroundColor Cyan
-    py -3.10 -m venv .venv
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        py -m venv .venv
+    } else {
+        python -m venv .venv
+    }
 }
 
 $Python = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'

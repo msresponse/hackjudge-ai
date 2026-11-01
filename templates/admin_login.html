@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Authentication — HackJudge AI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: var(--bg-main, #0b0f12);
+      color: var(--text-primary, #e2e8f0);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      padding: 2.25rem;
+      background: var(--bg-surface, #12181d);
+      border: 1px solid var(--border-default, #1e293b);
+      border-radius: 12px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+    }
+    .auth-header {
+      margin-bottom: 1.75rem;
+    }
+    .auth-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--teal-light, #2dd4bf);
+      background: rgba(45, 212, 191, 0.1);
+      border: 1px solid rgba(45, 212, 191, 0.25);
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+    }
+    .auth-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      color: #f8fafc;
+    }
+    .auth-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted, #94a3b8);
+      margin: 0;
+      line-height: 1.45;
+    }
+    .field-group {
+      margin-bottom: 1.25rem;
+    }
+    .field-label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #cbd5e1;
+    }
+    .field-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.75rem 1rem;
+      background: var(--bg-surface-elevated, #0f172a);
+      border: 1px solid var(--border-default, #334155);
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 0.9375rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .field-input:focus {
+      border-color: var(--teal-light, #2dd4bf);
+      box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.15);
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 0.8rem;
+      background: var(--teal-accent, #0d9488);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: background 0.15s ease;
+    }
+    .auth-btn:hover {
+      background: #14b8a6;
+    }
+    .auth-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .auth-error {
+      padding: 0.75rem 1rem;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 6px;
+      color: #f87171;
+      font-size: 0.8125rem;
+      margin-bottom: 1.25rem;
+    }
+    .auth-footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--text-muted, #94a3b8);
+    }
+    .auth-footer a {
+      color: var(--teal-light, #2dd4bf);
+      text-decoration: none;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="auth-tag">ORGANIZER WORKSPACE</span>
+      <h1 class="auth-title">Administrative Access</h1>
+      <p class="auth-desc">This command center is reserved for hackathon organizers and evaluation judges. Enter your access passkey to proceed.</p>
+    </div>
+
+    <div id="auth-error" class="auth-error hidden"></div>
+
+    <form id="admin-login-form">
+      <div class="field-group">
+        <label class="field-label" for="admin-key">Organizer Passkey</label>
+        <input type="password" id="admin-key" class="field-input" placeholder="Enter administrative passkey..." required autofocus autocomplete="current-password">
+      </div>
+
+      <button type="submit" id="btn-submit-key" class="auth-btn">
+        <span id="btn-text">Unlock Workspace →</span>
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <span>Are you a student participant?</span>
+      <a href="/submit">Go to Student Submission Portal →</a>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('admin-login-form');
+    const errBox = document.getElementById('auth-error');
+    const btn = document.getElementById('btn-submit-key');
+    const btnText = document.getElementById('btn-text');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.classList.add('hidden');
+      errBox.textContent = '';
+
+      const key = document.getElementById('admin-key').value.trim();
+      if (!key) return;
+
+      btn.disabled = true;
+      btnText.textContent = 'Verifying passkey...';
+
+      try {
+        const resp = await fetch('/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(data.error || 'Authentication failed. Please verify your passkey.');
+        }
+        window.location.href = data.redirect || '/admin';
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = 'Unlock Workspace →';
+      }
+    });
+  </script>
+</body>
+</html>
+
