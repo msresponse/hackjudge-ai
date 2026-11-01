@@ -93,6 +93,48 @@ $('#dashboard-submit').addEventListener('click', () => {
   navigate('submit');
   if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;
 });
+
+// Command Center Overview Quick Actions
+$('#btn-quick-submit')?.addEventListener('click', () => {
+  navigate('submit');
+  if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;
+});
+
+$('#btn-quick-batch')?.addEventListener('click', () => {
+  navigate('batch');
+  if (state.currentHackathon) $('#batch-hackathon').value = state.currentHackathon.id;
+});
+
+$('#queue-empty-submit')?.addEventListener('click', () => {
+  navigate('submit');
+  if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;
+});
+
+$('#btn-view-leaderboard')?.addEventListener('click', () => {
+  if (state.currentHackathon) openHackathon(state.currentHackathon.id);
+});
+
+$('#btn-copy-student-link')?.addEventListener('click', () => {
+  if (!state.currentHackathon) {
+    toast('Select a hackathon first.', 'info');
+    return;
+  }
+  const link = `${window.location.origin}/join/${state.currentHackathon.id}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(() => {
+      toast(`Copied shareable portal link: ${link}`, 'success', 5000);
+    }).catch(() => {
+      prompt('Copy this student portal link:', link);
+    });
+  } else {
+    prompt('Copy this student portal link:', link);
+  }
+});
+
+$('#sidebar-hackathon-select')?.addEventListener('change', (e) => {
+  const id = Number(e.target.value);
+  if (id) switchActiveHackathon(id);
+});
 $('#empty-submit').addEventListener('click', () => {
   navigate('submit');
   if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;
@@ -166,8 +208,24 @@ function renderCriteriaEditor() {
 function updateWeightTotal() {
   const total = state.criteria.reduce((s, c) => s + num(c.weight), 0);
   const el = $('#weight-total');
-  el.textContent = `${total}% total`;
-  el.classList.toggle('invalid', Math.abs(total - 100) > .01);
+  if (el) {
+    el.textContent = `${total}% total`;
+    el.classList.toggle('invalid', Math.abs(total - 100) > .01);
+  }
+
+  // System validation live indicators in aside
+  const valTotal = $('#val-text-total');
+  const valInd = $('#val-indicator-total');
+  if (valTotal && valInd) {
+    const isOk = Math.abs(total - 100) <= 0.01;
+    valTotal.textContent = isOk ? 'Criteria total: 100%' : `Criteria total: ${total}% (${100 - total > 0 ? (100 - total) + '% remaining' : Math.abs(100 - total) + '% excess'})`;
+    valInd.textContent = isOk ? '✓' : '⚠️';
+    valInd.classList.toggle('warning', !isOk);
+  }
+  const valCount = $('#val-text-count');
+  if (valCount) {
+    valCount.textContent = `${state.criteria.length} criteria configured`;
+  }
 }
 
 function renderRubricPreview() {
@@ -266,31 +324,188 @@ async function loadHealth() {
   }
 }
 
-function renderHackathonsList(hacks) {
+async function switchActiveHackathon(id) {
+  const h = state.hackathons.find(x => x.id === id);
+  if (!h) return;
+  state.currentHackathon = h;
+  try {
+    sessionStorage.setItem('hj_active_hackathon_id', String(id));
+  } catch {}
+  await renderActiveHackathonOverview(h);
+}
+
+async function renderActiveHackathonOverview(h) {
+  if (!h) {
+    $('#active-hack-name').textContent = 'No Hackathons Configured';
+    $('#active-hack-desc').textContent = 'Create your first event workspace to establish rubrics and process submissions.';
+    $('#active-hack-track').textContent = 'Open Innovation';
+    $('#active-hack-id').textContent = '—';
+    $('#active-hack-summary').innerHTML = '<span class="muted">0 Projects in queue</span>';
+    $('#pipe-submitted').textContent = '0';
+    $('#pipe-analyzing').textContent = '0';
+    $('#pipe-evaluated').textContent = '0';
+    $('#pipe-review').textContent = '0';
+    $('#pipe-finalized').textContent = '0';
+    $('#queue-count').textContent = '0 projects';
+    $('#queue-table').classList.add('hidden');
+    $('#queue-empty').classList.remove('hidden');
+    $('#activity-feed').innerHTML = '<p class="muted" style="padding:16px;text-align:center;">No active events.</p>';
+    return;
+  }
+
+  // Update Sidebar Select
+  const sideSelect = $('#sidebar-hackathon-select');
+  if (sideSelect) {
+    sideSelect.innerHTML = state.hackathons.map(x => `<option value="${x.id}" ${x.id === h.id ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
+    sideSelect.value = h.id;
+  }
+
+  // Update Hero Banner
+  $('#active-hack-name').textContent = h.name;
+  $('#active-hack-track').textContent = h.track || 'Open Innovation';
+  $('#active-hack-id').textContent = `ID #${h.id}`;
+  $('#active-hack-desc').textContent = h.description || 'Evaluation workspace for automated code analysis, transparent scoring, and judge decisions.';
+
+  // Fetch Submissions for active hackathon
+  try {
+    const { data: subs } = await api(`/api/hackathons/${h.id}/submissions`);
+    const total = subs.length;
+    const submitted = subs.filter(x => x.status === 'RECEIVED').length;
+    const analyzing = subs.filter(x => x.status === 'ANALYZING').length;
+    const evaluated = subs.filter(x => x.status === 'EVALUATED').length;
+    const errorCount = subs.filter(x => x.status === 'ASSESSMENT_ERROR').length;
+    const inReview = subs.filter(x => x.status === 'EVALUATED' && (x.score !== null && x.score !== undefined)).length;
+    const finalized = evaluated;
+    const pending = submitted + analyzing;
+
+    // Update Pipeline Numbers
+    $('#pipe-submitted').textContent = submitted;
+    $('#pipe-analyzing').textContent = analyzing;
+    $('#pipe-evaluated').textContent = evaluated;
+    $('#pipe-review').textContent = inReview;
+    $('#pipe-finalized').textContent = finalized;
+
+    // Update Summary Line
+    $('#hero-assessed-count').textContent = evaluated;
+    $('#hero-review-count').textContent = inReview;
+    $('#hero-pending-count').textContent = pending;
+    $('#stat-submissions').textContent = total;
+
+    // Update Project Queue Table
+    const queueTable = $('#queue-table');
+    const queueEmpty = $('#queue-empty');
+    const queueBody = $('#queue-table-body');
+    $('#queue-count').textContent = `${total} project${total === 1 ? '' : 's'}`;
+
+    if (total === 0) {
+      queueTable.classList.add('hidden');
+      queueEmpty.classList.remove('hidden');
+    } else {
+      queueTable.classList.remove('hidden');
+      queueEmpty.classList.add('hidden');
+      queueBody.innerHTML = subs.slice(0, 10).map((x, i) => {
+        const score = x.score === null || x.score === undefined ? '—' : Number(x.score).toFixed(1);
+        const statusClass = x.status === 'EVALUATED' ? 'evaluated' : x.status === 'ANALYZING' ? 'analyzing' : x.status === 'ASSESSMENT_ERROR' ? 'error' : 'received';
+        const statusLabel = x.status === 'EVALUATED' ? 'Ready for Review' : x.status === 'ANALYZING' ? 'AI Evaluating' : x.status === 'ASSESSMENT_ERROR' ? 'Needs Attention' : 'Submitted';
+        const repoShort = x.github_url.replace('https://github.com/', '').replace(/\/$/, '');
+        return `
+          <tr>
+            <td>
+              <div class="queue-project-cell">
+                <span class="queue-project-name">${escapeHtml(x.project_name)}</span>
+                <a href="${escapeHtml(x.github_url)}" target="_blank" rel="noopener noreferrer" class="queue-project-repo">↗ ${escapeHtml(repoShort)}</a>
+              </div>
+            </td>
+            <td><span class="muted">${escapeHtml(x.team_name)}</span></td>
+            <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+            <td><span class="score-badge">${score}</span></td>
+            <td><span class="method-tag ${x.assessment_method === 'ai' ? '' : 'baseline'}">${x.assessment_method === 'ai' ? 'AI' : 'Baseline'}</span></td>
+            <td style="text-align:right">
+              <button class="small-button" onclick="openSubmission(${x.id})">Review &amp; Inspect →</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Update Activity Stream
+    const feed = $('#activity-feed');
+    if (feed) {
+      if (subs.length === 0) {
+        feed.innerHTML = '<p class="muted" style="padding:16px;text-align:center;">No recent activity yet. Submit projects to see live pipeline updates.</p>';
+      } else {
+        feed.innerHTML = subs.slice(0, 6).map(x => `
+          <div class="activity-item">
+            <span class="activity-dot ${x.status === 'ASSESSMENT_ERROR' ? 'red' : ''}"></span>
+            <div class="activity-body">
+              <b>${escapeHtml(x.project_name)}</b> <span class="muted">(${escapeHtml(x.team_name)})</span>
+              <div style="color:var(--text-secondary);font-size:11.5px;margin-top:2px;">
+                ${x.status === 'EVALUATED' ? `AI evaluation completed · Calibrated score ${Number(x.score).toFixed(1)}/100` : x.status === 'ANALYZING' ? 'Repository evidence extraction in progress' : x.status === 'ASSESSMENT_ERROR' ? 'Evaluation error: repository not reachable' : 'Project submitted to evaluation queue'}
+              </div>
+              <div class="activity-time">${escapeHtml(x.updated_at ? x.updated_at.split('T')[0] : 'Today')}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load active hackathon submissions:', err);
+  }
+}
+
+async function renderHackathonsList(hacks) {
   state.hackathons = hacks;
   const submissions = hacks.reduce((s, h) => s + (h.submission_count || 0), 0);
   const overrides = hacks.reduce((s, h) => s + (h.override_count || 0), 0);
   $('#stat-hackathons').textContent = hacks.length;
   $('#stat-submissions').textContent = submissions;
-  $('#stat-overrides').textContent = overrides;
+  $('#stat-overrides').textContent = `${overrides} overrides`;
   $('#hackathon-count').textContent = `${hacks.length} program${hacks.length === 1 ? '' : 's'}`;
+
+  // Determine Active Hackathon
+  let activeId = null;
+  try {
+    activeId = Number(sessionStorage.getItem('hj_active_hackathon_id'));
+  } catch {}
+  let activeHack = hacks.find(x => x.id === activeId) || state.currentHackathon || hacks[0];
+  state.currentHackathon = activeHack || null;
+
+  // Render Command Center Active Section
+  await renderActiveHackathonOverview(activeHack);
+
+  // Render All Hackathons Cards
   $('#hackathon-list').innerHTML = hacks.map(h => `
     <article class="hackathon-card" data-open-hack="${h.id}">
       <div class="hackathon-card-top">
         <span class="track-tag">${escapeHtml(h.track)}</span>
-        <span class="muted">ID ${h.id}</span>
+        <button class="hackathon-card-delete" data-delete-hack="${h.id}" title="Delete hackathon">✕ Delete</button>
       </div>
       <h4>${escapeHtml(h.name)}</h4>
       <p>${escapeHtml(h.description || 'No description added.')} </p>
       <div class="card-meta">
         <span>◈ ${h.submission_count || 0} submission${h.submission_count === 1 ? '' : 's'}</span>
-        <strong>Open dashboard →</strong>
+        <strong>Command Center →</strong>
       </div>
     </article>
   `).join('');
   $('#empty-hackathons').classList.toggle('hidden', hacks.length > 0);
   $('#hackathon-list').classList.toggle('hidden', hacks.length === 0);
-  $$('[data-open-hack]').forEach(el => el.addEventListener('click', () => openHackathon(Number(el.dataset.openHack))));
+
+  $$('[data-open-hack]').forEach(el => el.addEventListener('click', (e) => {
+    if (e.target.closest('.hackathon-card-delete')) return;
+    openHackathon(Number(el.dataset.openHack));
+  }));
+
+  $$('[data-delete-hack]').forEach(btn => btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = Number(btn.dataset.deleteHack);
+    const target = state.hackathons.find(x => x.id === id);
+    if (!target) return;
+    state.currentHackathon = target;
+    $('#delete-modal-msg').textContent = `This will permanently delete "${target.name}" (ID ${target.id}) and all its submissions. This cannot be undone.`;
+    $('#delete-modal').classList.remove('hidden');
+  }));
+
   fillHackathonSelect();
   fillBatchHackathonSelect();
 }
@@ -516,90 +731,163 @@ async function openSubmission(id) {
     state.selectedSubmission = s;
     if (s.status === 'ANALYZING') {
       $('#detail-content').innerHTML = `
-        <div class="detail-head">
+        <div class="workbench-header">
           <div class="eyebrow">SUBMISSION #${s.id} · ${escapeHtml(s.team_name)}</div>
           <h2>${escapeHtml(s.project_name)}</h2>
-          <p><a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open GitHub repository ↗</a> ${s.demo_url ? ` · <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open live demo ↗</a>` : ''}</p>
+          <div class="workbench-header-links">
+            <a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer">↗ GitHub Repository</a>
+            ${s.demo_url ? `· <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer">↗ Live Demo</a>` : ''}
+          </div>
         </div>
-        <div class="evaluating-indicator" style="background:rgba(184,168,255,0.08);border:1px solid rgba(184,168,255,0.25);border-radius:12px;padding:32px 20px;text-align:center;margin:24px 0;">
-          <span class="spinner" style="width:28px;height:28px;display:inline-block;margin-bottom:14px;"></span>
-          <h3 style="margin:0 0 8px 0;color:#f0eeff;font-size:1.2rem;">AI Assessment in Progress</h3>
-          <p class="muted" style="margin:0;font-size:0.95rem;max-width:550px;margin-inline:auto;">Inspecting GitHub repository and live demo in parallel. Calibrated evaluation against hackathon rubric is running and will update automatically.</p>
+        <div class="evaluating-indicator" style="background:var(--teal-subtle);border:1px solid var(--teal-border);border-radius:10px;padding:36px 20px;text-align:center;margin:24px 0;">
+          <span class="spinner" style="width:26px;height:26px;display:inline-block;margin-bottom:12px;"></span>
+          <h3 style="margin:0 0 6px 0;color:var(--text-primary);font-size:16px;">AI Pipeline Analysis in Progress</h3>
+          <p class="muted" style="margin:0;font-size:12.5px;max-width:520px;margin-inline:auto;">Inspecting GitHub repository and live demo in parallel. Calibrated evaluation against hackathon rubric is running and will update automatically.</p>
         </div>
       `;
-      navigate('detail');
+      $('#detail-modal').classList.remove('hidden');
       pollSubmissionUntilComplete(s.id, s.hackathon_id);
       return;
     }
+
     const e = s.evaluation || {}, ev = s.evidence || {}, repo = ev.repository || {}, signals = ev.signals || {};
     const isBaseline = s.assessment_method === 'evidence-baseline';
+
     $('#detail-content').innerHTML = `
-      <div class="detail-head">
-        <div class="eyebrow">SUBMISSION #${s.id} · ${escapeHtml(s.team_name)}</div>
+      <div class="workbench-header">
+        <div class="eyebrow">EVALUATION WORKBENCH · SUBMISSION #${s.id}</div>
         <h2>${escapeHtml(s.project_name)}</h2>
-        <p><a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open GitHub repository ↗</a> ${s.demo_url ? ` · <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer" style="color:#b8a8ff">Open live demo ↗</a>` : ''}</p>
+        <div class="workbench-header-links">
+          <span>Team: <b>${escapeHtml(s.team_name)}</b></span>
+          <span class="metric-divider">•</span>
+          <a href="${escapeHtml(s.github_url)}" target="_blank" rel="noopener noreferrer">↗ GitHub Repository</a>
+          ${s.demo_url ? `<span class="metric-divider">•</span> <a href="${escapeHtml(s.demo_url)}" target="_blank" rel="noopener noreferrer">↗ Live Demo</a>` : ''}
+          <span class="metric-divider">•</span>
+          <span class="status-badge ${s.status === 'EVALUATED' ? 'evaluated' : 'error'}">${s.status === 'EVALUATED' ? 'Ready for Review' : escapeHtml(s.status)}</span>
+        </div>
       </div>
-      <div class="detail-score-row">
-        <div class="detail-score">${s.score === null || s.score === undefined ? '—' : Number(s.score).toFixed(1)}<small style="font-size:12px;color:#8c82ba"> / 100</small></div>
-        <p><b>${isBaseline ? 'Structural baseline — not an AI judgement' : s.assessment_method === 'ai' ? 'AI assessment' : 'Assessment status: ' + s.status}</b><br>${escapeHtml(e.summary || e.error || 'No assessment summary available.')}</p>
-      </div>
-      ${e.error ? `<div class="caution-note">Assessment error: ${escapeHtml(e.error)}. Check API configuration or repository access, then submit again after fixing the issue.</div>` : ''}
-      <div class="evidence-summary">
-        <div class="evidence-stat"><b>${num(ev.file_count)}</b><small>TRACKED FILES</small></div>
-        <div class="evidence-stat"><b>${num(repo.stars)}</b><small>GITHUB STARS</small></div>
-        <div class="evidence-stat"><b>${escapeHtml(repo.language || '—')}</b><small>MAIN LANGUAGE</small></div>
-      </div>
-      <h3 class="detail-section-title">Criterion-by-criterion assessment</h3>
-      ${Array.isArray(e.criteria) && e.criteria.length ? e.criteria.map(c => `
-        <div class="criterion-result">
-          <div class="criterion-result-head">
-            <b>${escapeHtml(c.criterion)} <span style="font-weight:400;color:#8b90a4">· ${num(c.weight)}% weight</span></b>
-            <span>${num(c.score).toFixed(1)} / 10</span>
+
+      <div class="split-screen-grid">
+        <!-- LEFT PANEL: PROJECT EVIDENCE -->
+        <div class="workbench-col-evidence">
+          <div class="section-tag" style="margin-bottom:10px;">01 / CODE EVIDENCE</div>
+
+          <!-- Quick Stats Grid -->
+          <div class="evidence-stats-grid">
+            <div class="evidence-stat-card">
+              <b>${num(ev.file_count)}</b>
+              <small>TRACKED FILES</small>
+            </div>
+            <div class="evidence-stat-card">
+              <b>${escapeHtml(repo.language || '—')}</b>
+              <small>PRIMARY LANGUAGE</small>
+            </div>
+            <div class="evidence-stat-card">
+              <b>${num(repo.stars)}</b>
+              <small>GITHUB STARS</small>
+            </div>
           </div>
-          <div class="bar-track" style="margin-top:10px">
-            <div class="bar-fill" style="width:${Math.max(0, Math.min(100, num(c.score) * 10))}%"></div>
+
+          <!-- Repository Signals -->
+          <div class="detail-box" style="margin-bottom:16px;">
+            <h4 style="margin:0 0 10px;font-size:12px;color:var(--text-primary);letter-spacing:0.02em;">CODEBASE SIGNALS</h4>
+            <ul class="signals-list">
+              <li><span>README Documentation</span> <b class="${signals.has_readme ? 'detected' : 'missing'}">${signals.has_readme ? '✓ Detected' : '— Missing'}</b></li>
+              <li><span>Automated Unit Tests</span> <b class="${signals.has_tests ? 'detected' : 'missing'}">${signals.has_tests ? '✓ Detected' : '— None'}</b></li>
+              <li><span>CI / Workflow Automation</span> <b class="${signals.has_ci ? 'detected' : 'missing'}">${signals.has_ci ? '✓ Configured' : '— None'}</b></li>
+              <li><span>Dependency Manifest</span> <b class="${signals.has_dependency_manifest ? 'detected' : 'missing'}">${signals.has_dependency_manifest ? '✓ Present' : '— Missing'}</b></li>
+              <li><span>Deployment Configs</span> <b class="${signals.has_deployment_config ? 'detected' : 'missing'}">${signals.has_deployment_config ? '✓ Configured' : '— None'}</b></li>
+              <li><span>Open Source License</span> <b class="${signals.has_license ? 'detected' : 'missing'}">${signals.has_license ? '✓ ' + escapeHtml(repo.license || 'Present') : '— None'}</b></li>
+            </ul>
+            <div class="muted" style="font-size:11px;">Default Branch: <code>${escapeHtml(repo.default_branch || 'main')}</code></div>
           </div>
-          <p>${escapeHtml(c.rationale || 'No rationale supplied.')}</p>
-          ${Array.isArray(c.evidence_refs) && c.evidence_refs.length ? `<div class="evidence-chips">${c.evidence_refs.map(r => `<span class="evidence-chip">${escapeHtml(r)}</span>`).join('')}</div>` : ''}
-          ${Array.isArray(c.risks) && c.risks.length ? `<p style="color:#d6a98a">Risks: ${escapeHtml(c.risks.join(' · '))}</p>` : ''}
+
+          <!-- Live Demo Inspection -->
+          <div class="detail-box" style="margin-bottom:16px;">
+            <h4 style="margin:0 0 8px;font-size:12px;color:var(--text-primary);">LIVE DEMO INSPECTION</h4>
+            <p style="margin:0 0 6px;font-size:11.5px;color:var(--text-secondary);">${escapeHtml((ev.demo_inspection || {}).message || 'No live demo link provided.')}</p>
+            ${(ev.demo_inspection || {}).title ? `<p style="margin:4px 0;font-size:11.5px;">Title: <b>${escapeHtml(ev.demo_inspection.title)}</b></p>` : ''}
+            ${(ev.demo_inspection || {}).is_unedited_starter_template ? `<div class="caution-note" style="margin:8px 0;padding:8px 10px;font-size:11px;">⚠️ Starter boilerplate detected: ${escapeHtml(ev.demo_inspection.starter_template_detail || 'Default template')}.</div>` : ''}
+          </div>
+
+          <!-- Strengths & Identified Risks -->
+          <div class="form-grid-2" style="gap:10px;">
+            <div class="detail-box">
+              <h4 style="margin:0 0 6px;font-size:11.5px;color:var(--status-finalized);">STRENGTHS</h4>
+              ${listHtml(e.strengths)}
+            </div>
+            <div class="detail-box">
+              <h4 style="margin:0 0 6px;font-size:11.5px;color:var(--status-evaluated);">NEXT STEPS / RISKS</h4>
+              ${listHtml([...(e.risks || []), ...(e.missing_evidence || [])])}
+            </div>
+          </div>
         </div>
-      `).join('') : '<p class="muted">No criterion scores are available.</p>'}
-      <div class="detail-grid">
-        <div class="detail-box">
-          <h4>Repository signals</h4>
-          <ul>${Object.entries({ README: signals.has_readme, Tests: signals.has_tests, 'CI workflow': signals.has_ci, 'Dependency manifest': signals.has_dependency_manifest, 'Deployment config': signals.has_deployment_config, License: signals.has_license }).map(([k, v]) => `<li>${escapeHtml(k)}: <b style="color:${v ? '#72e0b0' : '#e2b18c'}">${v ? 'detected' : 'not detected'}</b></li>`).join('')}</ul>
-          <p>Files tracked: ${num(ev.file_count)} · Branch: ${escapeHtml(repo.default_branch || '—')} · License: ${escapeHtml(repo.license || '—')}</p>
+
+        <!-- RIGHT PANEL: EVALUATION & DECISION -->
+        <div class="workbench-col-evaluation">
+          <div class="section-tag" style="margin-bottom:10px;">02 / RUBRIC EVALUATION</div>
+
+          <!-- Score Hero Card -->
+          <div class="score-hero-card">
+            <div>
+              <div class="score-hero-number">${s.score === null || s.score === undefined ? '—' : Number(s.score).toFixed(1)}<small> / 100</small></div>
+              <small class="muted" style="font-size:10.5px;">CALIBRATED FINAL SCORE</small>
+            </div>
+            <div class="score-hero-meta">
+              <b>${isBaseline ? 'Structural Baseline' : s.assessment_method === 'ai' ? 'Gemma 4 AI Evaluation' : 'Score Pending'}</b>
+              <small>${escapeHtml(e.summary ? (e.summary.slice(0, 140) + '...') : (e.error || 'No assessment summary.'))}</small>
+            </div>
+          </div>
+
+          <!-- Criterion Breakdown -->
+          <div class="criteria-results-list">
+            ${Array.isArray(e.criteria) && e.criteria.length ? e.criteria.map(c => `
+              <div class="criteria-result-card">
+                <div class="criteria-result-top">
+                  <b>${escapeHtml(c.criterion)} <span class="muted" style="font-weight:400;font-size:11px;">(${num(c.weight)}% weight)</span></b>
+                  <span class="criteria-result-score">${num(c.score).toFixed(1)} / 10</span>
+                </div>
+                <div class="bar-track">
+                  <div class="bar-fill" style="width:${Math.max(0, Math.min(100, num(c.score) * 10))}%"></div>
+                </div>
+                <p>${escapeHtml(c.rationale || 'No rationale supplied.')}</p>
+                ${Array.isArray(c.evidence_refs) && c.evidence_refs.length ? `<div class="evidence-chips">${c.evidence_refs.map(r => `<span class="evidence-chip">📁 ${escapeHtml(r)}</span>`).join('')}</div>` : ''}
+              </div>
+            `).join('') : '<p class="muted">No criterion scores available.</p>'}
+          </div>
+
+          <!-- Human Review & Score Override Form -->
+          <div class="detail-box" style="margin-top:20px;border-color:var(--border-hover);">
+            <h4 style="margin:0 0 4px;font-size:12.5px;color:var(--text-primary);">HUMAN REVIEW &amp; SCORE OVERRIDE</h4>
+            <p class="muted" style="margin:0 0 12px;font-size:11px;">Override the calibrated score with mandatory justification. All changes are recorded in the audit trail.</p>
+
+            <form class="override-form" id="override-form">
+              <label>Final Score (0–100)
+                <input id="override-score" type="number" min="0" max="100" step="0.1" value="${s.score === null || s.score === undefined ? '' : Number(s.score).toFixed(1)}" required>
+              </label>
+              <label>Judgement Reason
+                <input id="override-reason" required maxlength="1000" placeholder="Explain the rationale for this change...">
+              </label>
+              <button class="button button-primary" type="submit" style="padding:9px 14px;">Approve Score</button>
+            </form>
+          </div>
+
+          <!-- Audit Trail History -->
+          <div class="audit-history">
+            <span class="section-tag">AUDIT TRAIL</span>
+            <div id="audit-list" style="margin-top:6px;">
+              ${(s.audit_log || []).length ? s.audit_log.map(a => `
+                <div class="audit-item">
+                  <b>${escapeHtml(a.action.replaceAll('_', ' '))}</b> by ${escapeHtml(a.actor)} · <span class="muted">${escapeHtml(a.created_at)}</span>
+                  <div style="color:var(--text-secondary);margin-top:2px;">${escapeHtml(a.reason)} ${a.old_value !== '' ? `(${escapeHtml(a.old_value)} → ${escapeHtml(a.new_value)})` : ''}</div>
+                </div>
+              `).join('') : '<p class="muted" style="font-size:11.5px;margin:6px 0;">No audit modifications recorded yet.</p>'}
+            </div>
+          </div>
         </div>
-        <div class="detail-box">
-          <h4>Live demo & website analysis</h4>
-          <p>${escapeHtml((ev.demo_inspection || {}).message || 'No demo inspection data.')}</p>
-          ${(ev.demo_inspection || {}).is_unedited_starter_template ? `<div class="caution-note" style="margin:8px 0;padding:8px 12px;font-size:0.85rem;">⚠️ Starter boilerplate detected: ${escapeHtml(ev.demo_inspection.starter_template_detail || 'Default template')}. Score penalized for lack of custom web UI.</div>` : ''}
-          ${(ev.demo_inspection || {}).title ? `<p style="margin:4px 0;">Title: <b>${escapeHtml(ev.demo_inspection.title)}</b></p>` : ''}
-          ${Array.isArray((ev.demo_inspection || {}).headings_detected) && (ev.demo_inspection.headings_detected.length) ? `<p style="margin:4px 0;"><small class="muted">Page Headings:</small> <i>${escapeHtml(ev.demo_inspection.headings_detected.join(' · '))}</i></p>` : ''}
-          ${(ev.demo_inspection || {}).interactive_elements ? `<p style="margin:4px 0;"><small class="muted">Interactive UI elements:</small> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.buttons)} buttons</span> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.forms)} forms</span> <span class="evidence-chip" style="font-size:0.75rem;">${num(ev.demo_inspection.interactive_elements.inputs)} inputs</span></p>` : ''}
-          ${(ev.demo_inspection || {}).text_preview ? `<details style="margin-top:8px;"><summary style="cursor:pointer;color:#b8a8ff;font-size:0.85rem;">View extracted website text (${(ev.demo_inspection.text_preview || '').length} chars) ▾</summary><p style="margin-top:6px;font-size:0.82rem;line-height:1.4;background:rgba(0,0,0,0.25);padding:8px;border-radius:6px;color:#cbd5e1;">${escapeHtml(ev.demo_inspection.text_preview)}</p></details>` : ''}
-        </div>
-        <div class="detail-box">
-          <h4>Strengths</h4>
-          ${listHtml(e.strengths)}
-        </div>
-        <div class="detail-box">
-          <h4>Risks & missing evidence</h4>
-          ${listHtml([...(e.risks || []), ...(e.missing_evidence || []), ...((e.mandatory_requirements || []).map(r => `${r.requirement}: ${r.status} — ${r.evidence || ''}`))])}
-        </div>
-      </div>
-      <h3 class="detail-section-title">Human score override</h3>
-      <p class="muted">The override changes the final leaderboard score, not the original criterion scores. A reason and audit entry are required.</p>
-      <form class="override-form" id="override-form">
-        <label>Final score (0–100)<input id="override-score" type="number" min="0" max="100" step="0.1" value="${s.score === null || s.score === undefined ? '' : Number(s.score).toFixed(1)}" required></label>
-        <label>Reason for change<input id="override-reason" required maxlength="1000" placeholder="Explain the human judgement"></label>
-        <button class="button button-primary" type="submit">Save override</button>
-      </form>
-      <h3 class="detail-section-title">Audit trail</h3>
-      <div id="audit-list">
-        ${(s.audit_log || []).length ? s.audit_log.map(a => `<div class="audit-item"><b>${escapeHtml(a.action.replaceAll('_', ' '))}</b> · ${escapeHtml(a.actor)} · ${escapeHtml(a.created_at)}<br>${escapeHtml(a.reason)} ${a.old_value !== '' ? `(${escapeHtml(a.old_value)} → ${escapeHtml(a.new_value)})` : ''}</div>`).join('') : '<p class="muted">No audit events yet.</p>'}
       </div>
     `;
+
     $('#detail-modal').classList.remove('hidden');
     $('#override-form').addEventListener('submit', saveOverride);
   } catch (err) {

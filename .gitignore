@@ -18,3 +18,7 @@ test_results/
 
 *.db-shm
 *.db-wal
+
+poster.jpeg
+
+BACKEND_ARCHITECTURE_AND_IMPROVEMENTS.md

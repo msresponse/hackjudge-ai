@@ -3,375 +3,461 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if hackathon %}{{ hackathon.name }} - Student Project Submission | HackJudge AI{% else %}Project Submission | HackJudge AI{% endif %}</title>
+  <title>{% if hackathon %}{{ hackathon.name }} — Project Submission | HackJudge AI{% else %}Project Submission | HackJudge AI{% endif %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <style>
-    .portal-body {
+    :root {
+      --portal-max-width: 760px;
+    }
+
+    body.portal-body {
       min-height: 100vh;
-      background: radial-gradient(circle at 50% 0%, rgba(121, 98, 233, 0.12) 0%, transparent 60%), var(--bg);
+      min-height: 100dvh;
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2.5rem 1rem 4rem;
+      padding: 2.5rem 1.25rem 4rem;
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
     }
+
     .portal-container {
       width: 100%;
-      max-width: 760px;
+      max-width: var(--portal-max-width);
       margin: 0 auto;
     }
+
+    /* Portal Navigation Bar */
     .portal-nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 2rem;
       padding-bottom: 1.25rem;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-default);
     }
+
     .portal-logo {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      font-family: var(--display);
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--text);
+      gap: 11px;
       text-decoration: none;
+      color: var(--text-primary);
     }
+
     .portal-logo-icon {
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, var(--purple), var(--purple2));
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
       border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-      box-shadow: 0 4px 12px rgba(121, 98, 233, 0.3);
+      background: linear-gradient(145deg, var(--crest-red), #8B1A1E);
+      color: #FFFFFF;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(193, 39, 45, 0.3);
+      flex-shrink: 0;
     }
+
+    .portal-logo-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .portal-logo-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .portal-logo-sub {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--teal-light);
+      letter-spacing: 0.09em;
+    }
+
     .portal-badge {
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
-      background: rgba(169, 148, 255, 0.1);
-      color: var(--purple);
-      border: 1px solid rgba(169, 148, 255, 0.25);
+      gap: 6px;
+      background-color: var(--teal-subtle);
+      color: var(--teal-light);
+      border: 1px solid var(--teal-border);
       border-radius: 999px;
-      padding: 0.35rem 0.85rem;
-      font-size: 0.8rem;
+      padding: 4px 10px;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
       font-weight: 600;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
-    .hackathon-hero {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2rem;
-      margin-bottom: 2rem;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-    }
-    .hackathon-hero::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--purple), var(--purple2), var(--green));
-    }
-    .hero-eyebrow {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
-    }
-    .hero-title {
-      font-family: var(--display);
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--text);
-      margin: 0 0 0.5rem;
-      line-height: 1.2;
-    }
-    .hero-desc {
-      color: var(--muted);
-      font-size: 0.95rem;
-      line-height: 1.6;
-      margin: 0 0 1.5rem;
-    }
-    .criteria-box {
-      background: var(--panel2);
-      border: 1px solid var(--border);
+
+    /* Event Overview Card */
+    .hackathon-hero-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-default);
       border-radius: 12px;
-      padding: 1.25rem;
+      padding: 1.75rem 2rem;
+      margin-bottom: 1.75rem;
+      position: relative;
     }
-    .criteria-header {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.75rem;
+
+    .hero-top-row {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 8px;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
     }
-    .criteria-pills {
+
+    .track-chip {
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-hover);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .hero-title {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 0.5rem;
+      letter-spacing: -0.025em;
+      line-height: 1.25;
+    }
+
+    .hero-desc {
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+      line-height: 1.55;
+      margin: 0 0 1.25rem;
+    }
+
+    .criteria-container {
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 9px;
+      padding: 1rem 1.25rem;
+    }
+
+    .criteria-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--teal-light);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.65rem;
+    }
+
+    .criteria-pills-wrap {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
+      gap: 0.45rem;
       margin-bottom: 0.75rem;
     }
+
     .criteria-pill {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 0.4rem 0.75rem;
-      font-size: 0.82rem;
+      background-color: var(--bg-canvas);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       gap: 0.4rem;
     }
+
     .criteria-weight {
-      font-family: var(--mono);
-      color: var(--purple);
-      font-weight: 600;
-      background: rgba(169, 148, 255, 0.15);
+      font-family: var(--font-mono);
+      color: var(--teal-light);
+      font-weight: 700;
+      background-color: var(--teal-subtle);
       padding: 0.1rem 0.35rem;
       border-radius: 4px;
       font-size: 0.75rem;
     }
-    .student-tip {
-      font-size: 0.82rem;
-      color: var(--muted);
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-      line-height: 1.4;
+
+    .portal-guidance {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+      padding-top: 0.6rem;
+      border-top: 1px solid var(--border-subtle);
     }
+
+    /* Form Container */
     .form-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2.25rem;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 12px;
+      padding: 2rem 2.25rem;
     }
-    .form-card-title {
-      font-family: var(--display);
+
+    .form-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .form-header h2 {
       font-size: 1.35rem;
       font-weight: 700;
-      margin: 0 0 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      color: var(--text-primary);
+      margin: 0.25rem 0 0.4rem;
+      letter-spacing: -0.02em;
     }
-    .form-card-subtitle {
-      color: var(--muted);
-      font-size: 0.9rem;
-      margin: 0 0 1.75rem;
+
+    .form-header p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin: 0;
     }
-    .locked-hackathon-notice {
+
+    .assigned-event-bar {
       display: flex;
       align-items: center;
       gap: 0.6rem;
-      background: rgba(114, 224, 176, 0.08);
-      border: 1px solid rgba(114, 224, 176, 0.25);
-      color: var(--green);
-      padding: 0.75rem 1rem;
-      border-radius: 10px;
-      font-size: 0.88rem;
-      margin-bottom: 1.75rem;
-    }
-    .form-group {
+      background-color: var(--teal-subtle);
+      border: 1px solid var(--teal-border);
+      color: var(--text-secondary);
+      padding: 0.65rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
       margin-bottom: 1.5rem;
     }
-    .form-label {
+
+    .assigned-event-bar b {
+      color: var(--teal-light);
+    }
+
+    .field-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .field-label {
       display: block;
       font-weight: 600;
-      font-size: 0.88rem;
-      margin-bottom: 0.45rem;
-      color: var(--text);
+      font-size: 0.85rem;
+      margin-bottom: 0.4rem;
+      color: var(--text-secondary);
     }
-    .form-label .req {
-      color: var(--red);
+
+    .field-label .req {
+      color: var(--crest-red-light);
       margin-left: 0.2rem;
     }
-    .form-hint {
+
+    .field-input, .field-textarea {
+      width: 100%;
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-default);
+      border-radius: 7px;
+      padding: 0.75rem 0.95rem;
+      color: var(--text-primary);
+      font-size: 0.92rem;
+      font-family: var(--font-ui);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .field-input:focus, .field-textarea:focus {
+      border-color: var(--teal-light);
+      box-shadow: 0 0 0 3px var(--teal-subtle);
+      outline: none;
+    }
+
+    .field-textarea {
+      min-height: 105px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .field-hint {
       display: block;
-      color: var(--muted);
-      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-size: 0.78rem;
       margin-top: 0.35rem;
       line-height: 1.4;
     }
-    .form-input, .form-textarea {
-      width: 100%;
-      background: var(--panel2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.75rem 1rem;
-      color: var(--text);
-      font-size: 0.95rem;
-      font-family: var(--font);
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .form-input:focus, .form-textarea:focus {
-      border-color: var(--purple);
-      box-shadow: 0 0 0 3px rgba(121, 98, 233, 0.2);
-      outline: none;
-    }
-    .form-textarea {
-      min-height: 110px;
-      resize: vertical;
-    }
+
     .btn-submit-project {
       width: 100%;
-      background: linear-gradient(135deg, var(--purple2), #6343dc);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 1rem 1.5rem;
-      font-size: 1.05rem;
-      font-weight: 700;
+      background-color: var(--teal-primary);
+      border: 1px solid var(--teal-hover);
+      color: #FFFFFF;
+      border-radius: 8px;
+      padding: 0.85rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.6rem;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-      box-shadow: 0 4px 18px rgba(121, 98, 233, 0.35);
-      margin-top: 2rem;
+      gap: 0.5rem;
+      transition: background-color 0.15s ease, box-shadow 0.15s ease;
+      margin-top: 1.75rem;
     }
+
     .btn-submit-project:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 24px rgba(121, 98, 233, 0.5);
+      background-color: var(--teal-hover);
+      box-shadow: 0 2px 12px var(--teal-glow);
     }
+
     .btn-submit-project:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      transform: none;
     }
+
+    /* Alerts */
     .alert-box {
-      border-radius: 10px;
-      padding: 1rem 1.25rem;
-      margin-bottom: 1.5rem;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.25rem;
       display: flex;
       align-items: flex-start;
-      gap: 0.75rem;
-      font-size: 0.9rem;
+      gap: 0.65rem;
+      font-size: 0.88rem;
       line-height: 1.45;
     }
+
     .alert-error {
-      background: rgba(255, 139, 154, 0.12);
-      border: 1px solid rgba(255, 139, 154, 0.3);
-      color: #ff9da9;
+      background-color: var(--crest-red-subtle);
+      border: 1px solid var(--crest-red-border);
+      color: var(--crest-red-light);
     }
+
+    /* Success Card Screen */
     .success-card {
-      background: var(--panel);
-      border: 1px solid rgba(114, 224, 176, 0.3);
-      border-radius: 16px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 12px;
       padding: 3rem 2rem;
       text-align: center;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
     }
-    .success-icon {
-      width: 64px;
-      height: 64px;
-      background: rgba(114, 224, 176, 0.15);
-      border: 2px solid var(--green);
+
+    .success-badge-icon {
+      width: 52px;
+      height: 52px;
+      background-color: var(--status-finalized-bg);
+      border: 2px solid var(--status-finalized);
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2rem;
-      margin: 0 auto 1.5rem;
-      color: var(--green);
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      margin: 0 auto 1.25rem;
+      color: var(--status-finalized);
     }
+
     .success-title {
-      font-family: var(--display);
-      font-size: 1.75rem;
+      font-size: 1.55rem;
       font-weight: 700;
-      color: #fff;
-      margin: 0 0 0.5rem;
+      color: var(--text-primary);
+      margin: 0 0 0.4rem;
+      letter-spacing: -0.02em;
     }
+
     .success-desc {
-      color: var(--muted);
-      font-size: 1rem;
-      max-width: 520px;
-      margin: 0 auto 1.75rem;
-      line-height: 1.6;
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+      max-width: 480px;
+      margin: 0 auto 1.5rem;
+      line-height: 1.55;
     }
+
     .receipt-box {
-      background: var(--panel2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
-      max-width: 500px;
-      margin: 0 auto 2rem;
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 9px;
+      padding: 1.15rem 1.4rem;
+      max-width: 480px;
+      margin: 0 auto 1.75rem;
       text-align: left;
     }
+
     .receipt-row {
       display: flex;
       justify-content: space-between;
-      padding: 0.4rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      font-size: 0.88rem;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.85rem;
     }
+
     .receipt-row:last-child {
       border-bottom: none;
     }
+
     .receipt-label {
-      color: var(--muted);
+      color: var(--text-muted);
     }
+
     .receipt-val {
       font-weight: 600;
-      color: var(--text);
+      font-family: var(--font-mono);
+      color: var(--text-primary);
       word-break: break-all;
     }
+
     .spinner-sm {
       display: inline-block;
-      width: 18px;
-      height: 18px;
+      width: 14px;
+      height: 14px;
       border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 0.8s linear infinite;
+      border-top-color: #FFFFFF;
+      animation: spin 0.65s linear infinite;
     }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+
     .hidden { display: none !important; }
   </style>
 </head>
 <body class="portal-body">
   <div class="portal-container">
+    <!-- TOP NAVIGATION -->
     <nav class="portal-nav">
       <div class="portal-logo">
-        <div class="portal-logo-icon">&#9878;</div>
-        <span>HackJudge <span style="color:var(--purple)">AI</span></span>
+        <div class="portal-logo-icon">HJ</div>
+        <div class="portal-logo-text">
+          <span class="portal-logo-title">HackJudge AI</span>
+          <span class="portal-logo-sub">STUDENT INTAKE</span>
+        </div>
       </div>
-      <div class="portal-badge">&#127891; Student Submission Portal</div>
+      <div class="portal-badge">Student Submission Portal</div>
     </nav>
 
     {% if error %}
       <div class="alert-box alert-error">
-        <span style="font-size:1.4rem">&#9888;</span>
+        <span style="font-size:1.2rem">⚠️</span>
         <div>
-          <b style="display:block; margin-bottom:0.25rem; font-size:1rem">Submission Link Unavailable</b>
-          <span>{{ error }} Please check the link provided by your hackathon organizers.</span>
+          <b style="display:block; margin-bottom:0.25rem;">Submission Link Unavailable</b>
+          <span>{{ error }} Please verify the URL provided by your hackathon organizers.</span>
         </div>
       </div>
     {% else %}
-      <!-- HACKATHON HERO INFO -->
-      <section class="hackathon-hero">
-        <div class="hero-eyebrow">
-          <span class="portal-badge">&#127919; {{ hackathon.track }}</span>
-          <span style="color:var(--muted); font-size:0.85rem">Target Hackathon</span>
+      <!-- EVENT OVERVIEW & CRITERIA CARD -->
+      <section class="hackathon-hero-card">
+        <div class="hero-top-row">
+          <span class="portal-badge">{{ hackathon.track }}</span>
+          <span class="track-chip">ID #{{ hackathon.id }}</span>
         </div>
         <h1 class="hero-title">{{ hackathon.name }}</h1>
         {% if hackathon.description %}
@@ -379,9 +465,9 @@
         {% endif %}
 
         {% if hackathon.criteria and hackathon.criteria|length > 0 %}
-          <div class="criteria-box">
-            <div class="criteria-header">&#9878; Evaluation Criteria &amp; Weights</div>
-            <div class="criteria-pills">
+          <div class="criteria-container">
+            <div class="criteria-title">Judging Criteria &amp; Relative Weights</div>
+            <div class="criteria-pills-wrap">
               {% for c in hackathon.criteria %}
                 <div class="criteria-pill">
                   <span>{{ c.name }}</span>
@@ -389,22 +475,24 @@
                 </div>
               {% endfor %}
             </div>
-            <div class="student-tip">
-              <span>&#128161;</span>
-              <span><b>Judging Guidance:</b> HackJudge AI assesses your actual code repository, commits, and demo. Keep your README clear, organize your files cleanly, and showcase your best effort!</span>
+            <div class="portal-guidance">
+              <b>Evaluation Note:</b> The platform evaluates real code evidence, commit activity, architecture, and live demo responsiveness. Keep your README clear and organize your repository cleanly.
             </div>
           </div>
         {% endif %}
       </section>
 
-      <!-- SUBMISSION FORM -->
+      <!-- SUBMISSION FORM CARD -->
       <section class="form-card" id="submission-card">
-        <h2 class="form-card-title">&#128640; Submit Your Project</h2>
-        <p class="form-card-subtitle">Fill in your team details and repository link to submit directly to <b>{{ hackathon.name }}</b>.</p>
+        <div class="form-header">
+          <span class="section-tag">01 / SUBMISSION INTAKE</span>
+          <h2>Submit Project Repository</h2>
+          <p>Submit your team details and repository link for <b>{{ hackathon.name }}</b>.</p>
+        </div>
 
-        <div class="locked-hackathon-notice">
-          <span>&#128274;</span>
-          <span><b>Assigned Hackathon:</b> {{ hackathon.name }} (Selection managed by organizers)</span>
+        <div class="assigned-event-bar">
+          <span>🔒</span>
+          <span>Target Event: <b>{{ hackathon.name }}</b> (Configured by competition directors)</span>
         </div>
 
         <div id="form-error" class="alert-box alert-error hidden"></div>
@@ -412,48 +500,48 @@
         <form id="student-submit-form" novalidate>
           <input type="hidden" id="hackathon-id" value="{{ hackathon.id }}">
 
-          <div class="form-group">
-            <label class="form-label" for="team-name">Team Name / Lead Name <span class="req">*</span></label>
-            <input type="text" id="team-name" class="form-input" placeholder="e.g. CodeWarriors or Alex Rivera" required maxlength="120">
-            <span class="form-hint">The name under which your project will be displayed on the leaderboard.</span>
+          <div class="field-group">
+            <label class="field-label" for="team-name">Team Name / Lead Developer <span class="req">*</span></label>
+            <input type="text" id="team-name" class="field-input" placeholder="e.g. Sapiens Devs or Alex Rivera" required maxlength="120">
+            <span class="field-hint">The title under which your project will be ranked on the competition leaderboard.</span>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="project-name">Project Title <span class="req">*</span></label>
-            <input type="text" id="project-name" class="form-input" placeholder="e.g. CampusConnect - Student Marketplace" required maxlength="120">
-            <span class="form-hint">A concise title for your hackathon project.</span>
+          <div class="field-group">
+            <label class="field-label" for="project-name">Project Title <span class="req">*</span></label>
+            <input type="text" id="project-name" class="field-input" placeholder="e.g. CampusConnect — Student Services Platform" required maxlength="120">
+            <span class="field-hint">A concise, descriptive name for your submission.</span>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="github-url">GitHub Repository URL <span class="req">*</span></label>
-            <input type="url" id="github-url" class="form-input" placeholder="https://github.com/your-username/your-repo" required maxlength="500">
-            <span class="form-hint">Must be a public GitHub repository. Our engine inspects your commit history, source code, and dependencies.</span>
+          <div class="field-group">
+            <label class="field-label" for="github-url">GitHub Repository URL <span class="req">*</span></label>
+            <input type="url" id="github-url" class="field-input" placeholder="https://github.com/organization/repository" required maxlength="500">
+            <span class="field-hint">Must be a public repository. The analysis engine checks source code, dependencies, and commits.</span>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="demo-url">Live Demo / Deployed URL <small style="color:var(--muted); font-weight:normal">(Optional)</small></label>
-            <input type="url" id="demo-url" class="form-input" placeholder="https://your-app.vercel.app or https://your-app.onrender.com" maxlength="500">
-            <span class="form-hint">Vercel, Netlify, Render, Streamlit, etc. If your project is not deployed online, feel free to leave this empty.</span>
+          <div class="field-group">
+            <label class="field-label" for="demo-url">Live Demo URL <small style="color:var(--text-dim);font-weight:normal">(Optional)</small></label>
+            <input type="url" id="demo-url" class="field-input" placeholder="https://your-project.vercel.app or https://your-demo.com" maxlength="500">
+            <span class="field-hint">Publicly reachable URL (Vercel, Render, Netlify, etc.). Leave empty if not hosted.</span>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="notes">Project Notes / Elevator Pitch <small style="color:var(--muted); font-weight:normal">(Optional)</small></label>
-            <textarea id="notes" class="form-textarea" placeholder="Briefly describe what problem your project solves, what technologies you used, and what features you are most excited about..." maxlength="2000"></textarea>
-            <span class="form-hint">Share helpful notes or special setup steps for the judges.</span>
+          <div class="field-group">
+            <label class="field-label" for="notes">Submission Highlights &amp; Notes <small style="color:var(--text-dim);font-weight:normal">(Optional)</small></label>
+            <textarea id="notes" class="field-textarea" placeholder="Briefly describe what problem this project addresses, architectural highlights, and key features to assist evaluating judges..." maxlength="2000"></textarea>
+            <span class="field-hint">Summarize key engineering decisions or special setup notes for the judges.</span>
           </div>
 
           <button type="submit" class="btn-submit-project" id="btn-submit">
-            <span id="btn-icon">&#128640;</span>
-            <span id="btn-text">Submit Project</span>
+            <span id="btn-icon"></span>
+            <span id="btn-text">Submit Project for Evaluation →</span>
           </button>
         </form>
       </section>
 
-      <!-- SUCCESS SCREEN -->
+      <!-- SUCCESS RECEIPT CARD -->
       <section class="success-card hidden" id="success-card">
-        <div class="success-icon">&#10003;</div>
-        <h2 class="success-title">Submission Received!</h2>
-        <p class="success-desc">Great job! Your project has been officially submitted to <b>{{ hackathon.name }}</b> and queued for AI-assisted evaluation.</p>
+        <div class="success-badge-icon">✓</div>
+        <h2 class="success-title">Submission Successfully Received</h2>
+        <p class="success-desc">Your project has been recorded for <b>{{ hackathon.name }}</b> and queued for pipeline evaluation.</p>
 
         <div class="receipt-box">
           <div class="receipt-row">
@@ -474,12 +562,12 @@
           </div>
           <div class="receipt-row">
             <span class="receipt-label">Status:</span>
-            <span class="receipt-val" style="color:var(--green)">&#9679; Queued for Judging</span>
+            <span class="receipt-val" style="color:var(--status-finalized)">● Queued in Evaluation Pipeline</span>
           </div>
         </div>
 
-        <button type="button" class="btn-submit-project" id="btn-submit-another" style="max-width:320px; margin:0 auto; background:var(--panel2); border:1px solid var(--border); box-shadow:none;">
-          <span>&#8634; Submit Another Project</span>
+        <button type="button" class="button button-secondary" id="btn-submit-another" style="margin:0 auto;">
+          <span>Submit Another Project</span>
         </button>
       </section>
     {% endif %}
@@ -525,7 +613,7 @@
         const notes = document.getElementById('notes').value.trim();
 
         if (!teamName) {
-          showError('Please enter your Team Name or Lead Name.');
+          showError('Please enter your Team Name or Lead Developer name.');
           return;
         }
         if (!projectName) {
@@ -533,19 +621,18 @@
           return;
         }
         if (!githubUrl) {
-          showError('Please enter your GitHub repository URL.');
+          showError('Please provide your GitHub repository URL.');
           return;
         }
         if (!isValidGithub(githubUrl)) {
-          showError('Invalid GitHub URL. Format should be: https://github.com/username/repository');
+          showError('Invalid GitHub URL. Expected format: https://github.com/organization/repository');
           return;
         }
 
         // Disable button and show spinner
         submitBtn.disabled = true;
         btnIcon.className = 'spinner-sm';
-        btnIcon.innerHTML = '';
-        btnText.textContent = 'Submitting project...';
+        btnText.textContent = 'Submitting project to evaluation pipeline...';
 
         try {
           const resp = await fetch('/api/submissions', {
@@ -563,11 +650,11 @@
 
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok) {
-            throw new Error(data.error || `Server returned error (${resp.status})`);
+            throw new Error(data.error || `Server error (${resp.status})`);
           }
 
-          // Populate success screen
-          document.getElementById('receipt-id').textContent = '#SUB-' + (data.id || 'NEW');
+          // Populate receipt
+          document.getElementById('receipt-id').textContent = '#SUB-' + (data.id || 'QUEUED');
           document.getElementById('receipt-team').textContent = teamName;
           document.getElementById('receipt-project').textContent = projectName;
           document.getElementById('receipt-repo').textContent = githubUrl;
@@ -577,12 +664,11 @@
           successCard.scrollIntoView({ behavior: 'smooth' });
 
         } catch (err) {
-          showError(err.message || 'Failed to submit. Please check your internet connection or verify your GitHub link.');
+          showError(err.message || 'Failed to submit. Please verify repository accessibility and connection.');
         } finally {
           submitBtn.disabled = false;
           btnIcon.className = '';
-          btnIcon.innerHTML = '&#128640;';
-          btnText.textContent = 'Submit Project';
+          btnText.textContent = 'Submit Project for Evaluation →';
         }
       });
 
@@ -599,4 +685,3 @@
   </script>
 </body>
 </html>
-
