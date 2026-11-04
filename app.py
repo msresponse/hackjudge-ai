@@ -236,6 +236,7 @@ def init_db():
             description TEXT NOT NULL DEFAULT '',
             criteria_json TEXT NOT NULL,
             requirements_json TEXT NOT NULL DEFAULT '[]',
+            is_open INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS submissions (
@@ -297,6 +298,11 @@ def init_db():
         # Safe migration: add roll_number column if not present in existing databases
         try:
             con.execute("ALTER TABLE submissions ADD COLUMN roll_number TEXT NOT NULL DEFAULT '';")
+        except sqlite3.OperationalError:
+            pass
+        # Safe migration: add is_open column if not present in existing databases
+        try:
+            con.execute("ALTER TABLE hackathons ADD COLUMN is_open INTEGER NOT NULL DEFAULT 1;")
         except sqlite3.OperationalError:
             pass
         con.execute("CREATE INDEX IF NOT EXISTS idx_submissions_roll ON submissions(hackathon_id, roll_number);")
@@ -1312,6 +1318,8 @@ def json_row(row):
             except (json.JSONDecodeError, TypeError):
                 item[field.removesuffix("_json")] = [] if field in ("criteria_json", "requirements_json") else {}
             del item[field]
+    if "is_open" in item:
+        item["is_open"] = bool(item["is_open"])
     return item
 
 
@@ -1369,6 +1377,8 @@ def student_portal(hackathon_id: int):
             hackathon_dict["criteria"] = json.loads(hackathon_dict.get("criteria_json") or "[]")
         except Exception:
             hackathon_dict["criteria"] = []
+
+        hackathon_dict["is_open"] = bool(hackathon_dict.get("is_open", 1))
 
         is_leaderboard = request.path.endswith("/leaderboard") or (request.args.get("tab") == "leaderboard")
         return render_template(
@@ -1467,7 +1477,7 @@ def create_hackathon():
         return jsonify({"error": "Mandatory requirements must be a list."}), 400
     requirements = [str(x).strip()[:300] for x in requirements if str(x).strip()][:20]
     with db() as con:
-        cur = con.execute("INSERT INTO hackathons(name,track,description,criteria_json,requirements_json,created_at) VALUES(?,?,?,?,?,?)", (name, track or "Open Innovation", description, json.dumps(normalized), json.dumps(requirements), now_iso()))
+        cur = con.execute("INSERT INTO hackathons(name,track,description,criteria_json,requirements_json,is_open,created_at) VALUES(?,?,?,?,?,1,?)", (name, track or "Open Innovation", description, json.dumps(normalized), json.dumps(requirements), now_iso()))
         row = con.execute("SELECT h.*, 0 AS submission_count FROM hackathons h WHERE id=?", (cur.lastrowid,)).fetchone()
     return jsonify(json_row(row)), 201
 
@@ -1496,6 +1506,37 @@ def delete_hackathon(hackathon_id):
         con.execute("DELETE FROM submissions WHERE hackathon_id=?", (hackathon_id,))
         con.execute("DELETE FROM hackathons WHERE id=?", (hackathon_id,))
     return jsonify({"ok": True, "message": "Hackathon deleted successfully."})
+
+
+@app.post("/api/hackathons/<int:hackathon_id>/toggle-submissions")
+@app.patch("/api/hackathons/<int:hackathon_id>")
+def toggle_hackathon_submissions(hackathon_id: int):
+    """Allows administrators to stop or resume accepting student submissions for a hackathon."""
+    if not is_admin_authorized(request):
+        return jsonify({"error": "Unauthorized. Administrative privileges required."}), 401
+    data = request.get_json(silent=True) or {}
+    with db() as con:
+        hackathon = con.execute("SELECT * FROM hackathons WHERE id=?", (hackathon_id,)).fetchone()
+        if not hackathon:
+            return jsonify({"error": "Hackathon not found."}), 404
+
+        if "is_open" in data:
+            new_state = 1 if data["is_open"] else 0
+        else:
+            new_state = 0 if hackathon["is_open"] else 1
+
+        con.execute("UPDATE hackathons SET is_open=? WHERE id=?", (new_state, hackathon_id))
+        updated = con.execute("""
+            SELECT h.*, 
+                   (SELECT COUNT(*) FROM submissions s WHERE s.hackathon_id = h.id) AS submission_count,
+                   (SELECT COUNT(*) FROM audit_log a JOIN submissions s ON a.submission_id = s.id WHERE s.hackathon_id = h.id AND a.action = 'score_override') AS override_count
+            FROM hackathons h 
+            WHERE h.id=?
+        """, (hackathon_id,)).fetchone()
+
+    updated_obj = json_row(updated)
+    broadcaster.publish("hackathon_status_updated", updated_obj)
+    return jsonify(updated_obj)
 
 
 @app.get("/api/hackathons/<int:hackathon_id>/submissions")
@@ -1939,6 +1980,10 @@ def create_submission():
         hackathon = con.execute("SELECT * FROM hackathons WHERE id=?", (hackathon_id,)).fetchone()
         if not hackathon:
             return jsonify({"error": "Hackathon not found."}), 404
+
+        # Enforce submission cutoff deadline
+        if not bool(hackathon["is_open"]):
+            return jsonify({"error": "Submissions are currently closed for this hackathon. The deadline has passed."}), 403
 
         # Enforce student submission attempts limit per roll number
         if roll_number:

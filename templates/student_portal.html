@@ -864,6 +864,11 @@
         <div class="hero-top-row">
           <span class="portal-badge">{{ hackathon.track }}</span>
           <span class="track-chip">ID #{{ hackathon.id }}</span>
+          {% if hackathon.is_open %}
+            <span class="portal-badge" id="portal-status-badge" style="background:rgba(45,212,191,0.12);color:var(--teal-light);border:1px solid var(--teal-border);">● Submissions Open</span>
+          {% else %}
+            <span class="portal-badge" id="portal-status-badge" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);">⛔ Submissions Closed</span>
+          {% endif %}
         </div>
         <h1 class="hero-title">{{ hackathon.name }}</h1>
         {% if hackathon.description %}
@@ -902,6 +907,16 @@
           <p>Submit your team details and repository link for <b>{{ hackathon.name }}</b>.</p>
         </div>
 
+        <div id="portal-closed-banner" class="alert-box alert-error {% if hackathon.is_open %}hidden{% endif %}" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:1.5rem; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:1.25rem;">
+          <span style="font-size:1.6rem; line-height:1;">⛔</span>
+          <div>
+            <b style="display:block; font-size:1rem; margin-bottom:0.35rem; color:#f87171;">Submissions Closed by Organizers</b>
+            <span style="color:var(--text-secondary); line-height:1.5; font-size:0.875rem;">
+              The submission window for <b>{{ hackathon.name }}</b> has concluded. New projects can no longer be submitted. If your team already submitted, your evaluation will proceed to completion and appear on the Live Leaderboard.
+            </span>
+          </div>
+        </div>
+
         <div class="assigned-event-bar">
           <span>🔒</span>
           <span>Target Event: <b>{{ hackathon.name }}</b> (Configured by competition directors)</span>
@@ -914,43 +929,46 @@
 
           <div class="field-group">
             <label class="field-label" for="roll-number">University Roll Number / Student ID <span class="req">*</span></label>
-            <input type="text" id="roll-number" class="field-input" placeholder="e.g. 21BCS1042 or 2024CS089" required maxlength="60">
+            <input type="text" id="roll-number" class="field-input" placeholder="e.g. 21BCS1042 or 2024CS089" required maxlength="60" {% if not hackathon.is_open %}disabled{% endif %}>
             <span class="field-hint">Used to verify that each student submits only once. If you re-submit, only your highest-scoring project will be considered on the leaderboard (max {{ max_submissions }} submissions).</span>
           </div>
 
           <div class="field-group">
             <label class="field-label" for="team-name">Team Name / Lead Developer <span class="req">*</span></label>
-            <input type="text" id="team-name" class="field-input" placeholder="e.g. Sapiens Devs or Alex Rivera" required maxlength="120">
+            <input type="text" id="team-name" class="field-input" placeholder="e.g. Sapiens Devs or Alex Rivera" required maxlength="120" {% if not hackathon.is_open %}disabled{% endif %}>
             <span class="field-hint">The title under which your project will be ranked on the competition leaderboard.</span>
           </div>
 
           <div class="field-group">
             <label class="field-label" for="project-name">Project Title <span class="req">*</span></label>
-            <input type="text" id="project-name" class="field-input" placeholder="e.g. CampusConnect — Student Services Platform" required maxlength="120">
+            <input type="text" id="project-name" class="field-input" placeholder="e.g. CampusConnect — Student Services Platform" required maxlength="120" {% if not hackathon.is_open %}disabled{% endif %}>
             <span class="field-hint">A concise, descriptive name for your submission.</span>
           </div>
 
           <div class="field-group">
             <label class="field-label" for="github-url">GitHub Repository URL <span class="req">*</span></label>
-            <input type="url" id="github-url" class="field-input" placeholder="https://github.com/organization/repository" required maxlength="500">
+            <input type="url" id="github-url" class="field-input" placeholder="https://github.com/organization/repository" required maxlength="500" {% if not hackathon.is_open %}disabled{% endif %}>
             <span class="field-hint">Must be a public repository. The analysis engine checks source code, dependencies, and commits.</span>
           </div>
 
           <div class="field-group">
             <label class="field-label" for="demo-url">Live Demo URL <small style="color:var(--text-dim);font-weight:normal">(Optional)</small></label>
-            <input type="url" id="demo-url" class="field-input" placeholder="https://your-project.vercel.app or https://your-demo.com" maxlength="500">
+            <input type="url" id="demo-url" class="field-input" placeholder="https://your-project.vercel.app or https://your-demo.com" maxlength="500" {% if not hackathon.is_open %}disabled{% endif %}>
             <span class="field-hint">Publicly reachable URL (Vercel, Render, Netlify, etc.). Leave empty if not hosted.</span>
           </div>
 
           <div class="field-group">
             <label class="field-label" for="notes">Submission Highlights &amp; Notes <small style="color:var(--text-dim);font-weight:normal">(Optional)</small></label>
-            <textarea id="notes" class="field-textarea" placeholder="Briefly describe what problem this project addresses, architectural highlights, and key features to assist evaluating judges..." maxlength="2000"></textarea>
+            <textarea id="notes" class="field-textarea" placeholder="Briefly describe what problem this project addresses, architectural highlights, and key features to assist evaluating judges..." maxlength="2000" {% if not hackathon.is_open %}disabled{% endif %}></textarea>
             <span class="field-hint">Summarize key engineering decisions or special setup notes for the judges.</span>
           </div>
 
-          <button type="submit" class="btn-submit-project" id="btn-submit">
+          <button type="submit" class="btn-submit-project" id="btn-submit" {% if not hackathon.is_open %}disabled style="opacity:0.6; cursor:not-allowed; background:var(--bg-surface-elevated); border:1px solid var(--border-default); color:var(--text-muted);"{% endif %}>
             <span id="btn-icon"></span>
-            <span id="btn-text">Submit Project for Evaluation →</span>
+            <span id="btn-text">{% if hackathon.is_open %}Submit Project for Evaluation →{% else %}⛔ Submissions Closed for this Event{% endif %}</span>
+          </button>
+          <button type="button" class="btn-submit-project {% if hackathon.is_open %}hidden{% endif %}" id="btn-jump-leaderboard-closed" style="margin-top:0.75rem; background:var(--teal-accent); color:#ffffff;">
+            <span>🏆 View Live Standings on Leaderboard →</span>
           </button>
         </form>
       </section>
@@ -1156,11 +1174,12 @@
         tabLeaderboard.classList.remove('active');
         if (heroCard) heroCard.classList.remove('hidden');
         if (leaderboardView) leaderboardView.classList.add('hidden');
-        if (currentSubId && successCard && !successCard.classList.contains('hidden')) {
-          successCard.classList.remove('hidden');
+        if (currentSubId) {
+          if (successCard) successCard.classList.remove('hidden');
           if (submissionCard) submissionCard.classList.add('hidden');
         } else {
           if (submissionCard) submissionCard.classList.remove('hidden');
+          if (successCard) successCard.classList.add('hidden');
         }
         try {
           if (window.location.hash === '#leaderboard') {
@@ -1200,6 +1219,10 @@
 
       if (jumpLeaderboardBtn) {
         jumpLeaderboardBtn.addEventListener('click', showLeaderboardTab);
+      }
+      const jumpLeaderboardClosedBtn = document.getElementById('btn-jump-leaderboard-closed');
+      if (jumpLeaderboardClosedBtn) {
+        jumpLeaderboardClosedBtn.addEventListener('click', showLeaderboardTab);
       }
 
       function showError(msg) {
@@ -1350,9 +1373,10 @@
           const resp = await fetch(`/api/submissions/${subId}`);
           if (!resp.ok) return;
           const s = await resp.json();
-          if (s.status === 'EVALUATED') {
-            updateTrackerSteps('FINALIZED', 'Your project evaluation has been verified and posted to the leaderboard!');
+          if (s.status === 'EVALUATED' || s.status === 'REJECTED' || s.status === 'ASSESSMENT_ERROR') {
+            updateTrackerSteps('FINALIZED', s.status === 'REJECTED' ? 'Evaluation completed (retained prior highest score).' : 'Your project evaluation has been verified and posted to the leaderboard!');
             renderReviewPanel(s);
+            loadLeaderboard();
             if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
             if (subStream) { try { subStream.close(); } catch {} subStream = null; }
           } else if (s.status === 'ANALYZING') {
@@ -1360,6 +1384,45 @@
           }
         } catch (err) {
           console.warn('Fetch review error:', err);
+        }
+      }
+
+      async function restoreSubmissionView(subId) {
+        if (!subId) return;
+        try {
+          const resp = await fetch(`/api/submissions/${subId}`);
+          if (!resp.ok) return;
+          const s = await resp.json();
+          if (s.hackathon_id !== hackathonId) return;
+
+          // Populate receipt fields
+          const receiptId = document.getElementById('receipt-id');
+          const receiptProj = document.getElementById('receipt-proj');
+          const receiptTeam = document.getElementById('receipt-team');
+          const receiptRepo = document.getElementById('receipt-repo');
+          const receiptRoll = document.getElementById('receipt-roll');
+          if (receiptId) receiptId.textContent = `#${s.id}`;
+          if (receiptProj) receiptProj.textContent = s.project_name;
+          if (receiptTeam) receiptTeam.textContent = s.team_name;
+          if (receiptRepo) receiptRepo.textContent = (s.github_url || '').replace('https://github.com/', '');
+          if (receiptRoll) receiptRoll.textContent = s.roll_number || '—';
+
+          // Show success card and hide intake form
+          if (submissionCard) submissionCard.classList.add('hidden');
+          if (successCard) successCard.classList.remove('hidden');
+
+          if (s.status === 'EVALUATED' || s.status === 'REJECTED' || s.status === 'ASSESSMENT_ERROR') {
+            updateTrackerSteps('FINALIZED', s.status === 'REJECTED' ? 'Evaluation completed (retained prior highest score).' : 'Your project evaluation has been verified and posted to the leaderboard!');
+            renderReviewPanel(s);
+            loadLeaderboard();
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            if (subStream) { try { subStream.close(); } catch {} subStream = null; }
+          } else {
+            // Still evaluating in background: resume active progress tracking
+            trackSubmissionLive(subId);
+          }
+        } catch (err) {
+          console.warn('Restore submission error:', err);
         }
       }
 
@@ -1383,6 +1446,8 @@
                 const s = JSON.parse(e.data);
                 updateTrackerSteps('FINALIZED', 'Evaluation complete!');
                 renderReviewPanel(s);
+                loadLeaderboard();
+                if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
                 subStream.close();
               } catch {}
             });
@@ -1598,6 +1663,69 @@
           .replace(/'/g, '&#039;');
       }
 
+      function updatePortalHackathonStatus(isOpen) {
+        const open = Boolean(isOpen);
+
+        // 1. Update hero badge
+        const badge = document.getElementById('portal-status-badge');
+        if (badge) {
+          if (open) {
+            badge.style.background = 'rgba(45,212,191,0.12)';
+            badge.style.color = 'var(--teal-light)';
+            badge.style.border = '1px solid var(--teal-border)';
+            badge.textContent = '● Submissions Open';
+          } else {
+            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.color = '#f87171';
+            badge.style.border = '1px solid rgba(239,68,68,0.3)';
+            badge.textContent = '⛔ Submissions Closed';
+          }
+        }
+
+        // 2. Update intake form controls without disrupting any active evaluation tracker
+        const banner = document.getElementById('portal-closed-banner');
+        if (banner) {
+          if (open) banner.classList.add('hidden');
+          else banner.classList.remove('hidden');
+        }
+
+        const formInputs = document.querySelectorAll('#student-submit-form input:not(#hackathon-id), #student-submit-form textarea');
+        formInputs.forEach(el => {
+          el.disabled = !open;
+        });
+
+        const submitBtn = document.getElementById('btn-submit');
+        const submitText = document.getElementById('btn-text');
+        if (submitBtn && submitText) {
+          if (open) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+            submitBtn.style.background = '';
+            submitBtn.style.border = '';
+            submitBtn.style.color = '';
+            submitText.textContent = 'Submit Project for Evaluation →';
+          } else {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.6';
+            submitBtn.style.cursor = 'not-allowed';
+            submitBtn.style.background = 'var(--bg-surface-elevated)';
+            submitBtn.style.border = '1px solid var(--border-default)';
+            submitBtn.style.color = 'var(--text-muted)';
+            submitText.textContent = '⛔ Submissions Closed for this Event';
+          }
+        }
+
+        const jumpClosedBtn = document.getElementById('btn-jump-leaderboard-closed');
+        if (jumpClosedBtn) {
+          if (open) jumpClosedBtn.classList.add('hidden');
+          else jumpClosedBtn.classList.remove('hidden');
+        }
+
+        // 3. Keep leaderboard fresh without reloading the page
+        loadLeaderboard();
+      }
+
       // Check if user or route explicitly asked for leaderboard
       const initialTab = "{{ initial_tab|default('intake') }}";
       const hash = (window.location.hash || '').toLowerCase();
@@ -1605,10 +1733,10 @@
       if (initialTab === 'leaderboard' || hash === '#leaderboard' || search.includes('tab=leaderboard') || search.includes('view=leaderboard')) {
         showLeaderboardTab();
       } else if (currentSubId) {
-        fetchAndRenderReview(currentSubId);
+        restoreSubmissionView(currentSubId);
       }
 
-      // Real-time EventSource for leaderboard updates
+      // Real-time EventSource for leaderboard updates & live status updates
       if (window.EventSource) {
         try {
           const lStream = new EventSource(`/api/hackathons/${hackathonId}/stream`);
@@ -1617,6 +1745,12 @@
           });
           lStream.addEventListener('score_updated', () => {
             loadLeaderboard();
+          });
+          lStream.addEventListener('hackathon_status_updated', (e) => {
+            try {
+              const d = JSON.parse(e.data);
+              updatePortalHackathonStatus(d.is_open);
+            } catch {}
           });
         } catch {}
       }

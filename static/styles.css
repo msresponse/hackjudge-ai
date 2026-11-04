@@ -549,6 +549,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   letter-spacing: 0.05em;
 }
 
+.event-live-badge.status-closed {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.event-live-badge.status-closed .pulse-dot {
+  background-color: #ef4444;
+  box-shadow: none;
+}
+
 .pulse-dot {
   width: 5px;
   height: 5px;
