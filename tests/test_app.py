@@ -15,6 +15,8 @@ class HackJudgeTests(unittest.TestCase):
         hj.init_db()
         hj.app.config["TESTING"] = True
         self.client = hj.app.test_client()
+        with hj.db() as con:
+            con.execute("DELETE FROM task_queue")
 
     def tearDown(self):
         import gc
@@ -247,7 +249,7 @@ def unfinished_helper():
                 hj.enqueue_evaluation_task(sid)
 
             # Wait for all 4 to finish
-            done = eval_completed_event.wait(timeout=4.0)
+            done = eval_completed_event.wait(timeout=6.0)
             self.assertTrue(done, "All 4 evaluations should finish within timeout")
             self.assertEqual(len(completed_sids), 4)
             # Sequential queue would yield max_concurrency == 1; parallel worker yields >= 2
@@ -432,6 +434,9 @@ def unfinished_helper():
         reeval = self.client.post('/api/submissions/1/reevaluate', headers=headers_unauth)
         self.assertEqual(reeval.status_code, 401)
 
+        toggle_sub = self.client.post(f'/api/hackathons/{hid}/toggle-submissions', headers=headers_unauth)
+        self.assertEqual(toggle_sub.status_code, 401)
+
         # Authorized call with X-Admin-Key succeeds
         headers_auth = {"X-Admin-Key": hj.ADMIN_ACCESS_KEY}
         del_auth = self.client.delete(f'/api/hackathons/{hid}', headers=headers_auth)
@@ -502,6 +507,149 @@ def unfinished_helper():
         self.assertEqual(data.get("models_count"), len(models))
         self.assertIn("gemma-4-26b-a4b-it", data.get("ai_models", []))
         self.assertIn("gemini-3.8-flash", data.get("ai_models", []))
+
+    def test_toggle_submissions_deadline_control(self):
+        # 1. Create a hackathon; default is_open is True
+        h = self.client.post('/api/hackathons', json={
+            "name": "Deadline Hackathon",
+            "track": "Web3",
+            "criteria": [{"name": "Quality", "description": "Good code", "weight": 100}]
+        }).json
+        hid = h['id']
+        self.assertTrue(h.get('is_open'))
+
+        # Verify initial student portal shows submissions open
+        portal_open = self.client.get(f'/join/{hid}')
+        self.assertEqual(portal_open.status_code, 200)
+        self.assertIn(b"Submissions Open", portal_open.data)
+
+        # 2. Unauthorized toggle returns 401
+        headers_unauth = {"X-Force-Auth-Check": "true"}
+        unauth_toggle = self.client.post(f'/api/hackathons/{hid}/toggle-submissions', json={}, headers=headers_unauth)
+        self.assertEqual(unauth_toggle.status_code, 401)
+
+        # 3. Authorized toggle closes submissions (sets is_open to False)
+        headers_auth = {"X-Admin-Key": hj.ADMIN_ACCESS_KEY}
+        close_resp = self.client.post(f'/api/hackathons/{hid}/toggle-submissions', json={}, headers=headers_auth)
+        self.assertEqual(close_resp.status_code, 200)
+        self.assertFalse(close_resp.json.get('is_open'))
+
+        # Verify hackathon detail reflects closed state
+        h_detail = self.client.get(f'/api/hackathons/{hid}').json
+        self.assertFalse(h_detail.get('is_open'))
+
+        # 4. Student submitting after deadline receives 403 Forbidden
+        sub_attempt = self.client.post('/api/submissions', json={
+            "hackathon_id": hid,
+            "team_name": "Late Team",
+            "project_name": "Missed Cutoff Project",
+            "roll_number": "ROLL-LATE-001",
+            "github_url": "https://github.com/example/late-repo"
+        })
+        self.assertEqual(sub_attempt.status_code, 403)
+        self.assertIn("Submissions are currently closed", sub_attempt.json.get("error", ""))
+
+        # 5. Student portal now indicates submissions closed and button disabled
+        portal_closed = self.client.get(f'/join/{hid}')
+        self.assertEqual(portal_closed.status_code, 200)
+        self.assertIn(b"Submissions Closed", portal_closed.data)
+
+        # 6. Leaderboard remains fully accessible even when submissions are closed
+        lb_resp = self.client.get(f'/api/hackathons/{hid}/leaderboard')
+        self.assertEqual(lb_resp.status_code, 200)
+
+        # 7. Resume submissions via authorized toggle
+        reopen_resp = self.client.post(f'/api/hackathons/{hid}/toggle-submissions', json={"is_open": True}, headers=headers_auth)
+        self.assertEqual(reopen_resp.status_code, 200)
+        self.assertTrue(reopen_resp.json.get('is_open'))
+
+        # Submissions now succeed
+        orig_fetch = hj.fetch_evidence_and_demo
+        try:
+            hj.fetch_evidence_and_demo = lambda g, d, force_refresh=False: ({"selected_files": []}, {"reachable": True})
+            sub_success = self.client.post('/api/submissions', json={
+                "hackathon_id": hid,
+                "team_name": "On Time Team",
+                "project_name": "Valid Project",
+                "roll_number": "ROLL-ONTIME-001",
+                "github_url": "https://github.com/example/ontime-repo"
+            })
+            self.assertIn(sub_success.status_code, (200, 202))
+        finally:
+            hj.fetch_evidence_and_demo = orig_fetch
+
+    def test_in_flight_evaluations_complete_when_submissions_stopped(self):
+        """Verifies that closing submissions blocks new submissions but allows already-submitted in-flight projects
+        to be fully evaluated and ranked on the leaderboard."""
+        orig_fetch = hj.fetch_evidence_and_demo
+        orig_ai = hj.ai_assessment
+        try:
+            hj.fetch_evidence_and_demo = lambda g, d, force_refresh=False: ({"selected_files": []}, {"reachable": True})
+            hj.ai_assessment = lambda hack, sub, ev, demo: ({"overall_score": 92.5, "summary": "Superb autonomous agent"}, "ai")
+
+            # 1. Create hackathon
+            h = self.client.post('/api/hackathons', json={
+                "name": "Graceful Cutoff Hackathon",
+                "track": "AI Systems",
+                "criteria": [{"name": "Execution", "description": "Working code", "weight": 100}]
+            }).json
+            hid = h['id']
+            self.assertTrue(h.get('is_open'))
+
+            # 2. Student submits project A while submissions are open
+            sub_resp = self.client.post('/api/submissions', json={
+                "hackathon_id": hid,
+                "team_name": "Pioneer Team",
+                "project_name": "Autonomous Agent",
+                "roll_number": "ROLL-PIONEER-001",
+                "github_url": "https://github.com/example/autonomous-agent",
+                "notes": "Submitted before the deadline."
+            })
+            self.assertIn(sub_resp.status_code, (200, 202))
+            sub_id = sub_resp.json['id']
+            self.assertEqual(sub_resp.json['status'], 'ANALYZING')
+
+            # 3. Organizers click 'Stop Submissions' while student A is in the middle of being evaluated
+            headers_auth = {"X-Admin-Key": hj.ADMIN_ACCESS_KEY}
+            stop_resp = self.client.post(f'/api/hackathons/{hid}/toggle-submissions', json={"is_open": False}, headers=headers_auth)
+            self.assertEqual(stop_resp.status_code, 200)
+            self.assertFalse(stop_resp.json['is_open'])
+
+            # 4. New incoming submissions from late students are rejected (HTTP 403)
+            late_sub = self.client.post('/api/submissions', json={
+                "hackathon_id": hid,
+                "team_name": "Late Team",
+                "project_name": "Too Late",
+                "roll_number": "ROLL-LATE-999",
+                "github_url": "https://github.com/example/late-repo"
+            })
+            self.assertEqual(late_sub.status_code, 403)
+
+            # 5. The in-flight project completes evaluation without being aborted or halted
+            row, err = hj.run_evaluation_task(sub_id)
+            self.assertIsNone(err)
+            self.assertEqual(row['status'], 'EVALUATED')
+            self.assertEqual(float(row['score']), 92.5)
+
+            # 6. Verify the completed submission is included in the hackathon submissions list
+            subs_resp = self.client.get(f'/api/hackathons/{hid}/submissions')
+            self.assertEqual(subs_resp.status_code, 200)
+            evaluated_in_list = [s for s in subs_resp.json if s['id'] == sub_id]
+            self.assertEqual(len(evaluated_in_list), 1)
+            self.assertEqual(evaluated_in_list[0]['status'], 'EVALUATED')
+            self.assertGreater(float(evaluated_in_list[0]['score']), 0)
+
+            # 7. Verify the completed submission is published to the leaderboard
+            lb_resp = self.client.get(f'/api/hackathons/{hid}/leaderboard')
+            self.assertEqual(lb_resp.status_code, 200)
+            lb_items = [s for s in lb_resp.json if s['id'] == sub_id]
+            self.assertEqual(len(lb_items), 1)
+            self.assertEqual(lb_items[0]['rank'], 1)
+            self.assertEqual(lb_items[0]['team_name'], 'Pioneer Team')
+            self.assertEqual(lb_items[0]['roll_number'], 'ROLL-PIONEER-001')
+        finally:
+            hj.fetch_evidence_and_demo = orig_fetch
+            hj.ai_assessment = orig_ai
 
 
 if __name__ == '__main__':

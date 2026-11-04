@@ -89,6 +89,12 @@ $('#dashboard-copy-link')?.addEventListener('click', () => {
     prompt('Copy this student submission link:', link);
   }
 });
+$('#dashboard-toggle-submissions')?.addEventListener('click', () => {
+  if (state.currentHackathon) toggleHackathonSubmissions(state.currentHackathon.id);
+});
+$('#btn-toggle-submissions')?.addEventListener('click', () => {
+  if (state.currentHackathon) toggleHackathonSubmissions(state.currentHackathon.id);
+});
 $('#dashboard-submit').addEventListener('click', () => {
   navigate('submit');
   if (state.currentHackathon) $('#submission-hackathon').value = state.currentHackathon.id;
@@ -328,6 +334,17 @@ async function loadHealth() {
 
 let currentHackathonStream = null;
 
+async function refreshCurrentDashboardIfActive() {
+  const dashView = $('#view-dashboard');
+  if (dashView && !dashView.classList.contains('hidden') && state.currentHackathon) {
+    try {
+      const { data: s } = await api(`/api/hackathons/${state.currentHackathon.id}/submissions`);
+      state.submissions = s;
+      renderDashboard();
+    } catch {}
+  }
+}
+
 function connectHackathonStream(hid) {
   if (currentHackathonStream) {
     try { currentHackathonStream.close(); } catch {}
@@ -343,6 +360,7 @@ function connectHackathonStream(hid) {
       } catch {}
       if (state.currentHackathon && state.currentHackathon.id === hid) {
         renderActiveHackathonOverview(state.currentHackathon);
+        refreshCurrentDashboardIfActive();
       }
     });
     currentHackathonStream.addEventListener('submission_evaluated', (e) => {
@@ -352,6 +370,7 @@ function connectHackathonStream(hid) {
       } catch {}
       if (state.currentHackathon && state.currentHackathon.id === hid) {
         renderActiveHackathonOverview(state.currentHackathon);
+        refreshCurrentDashboardIfActive();
       }
       if (state.selectedSubmission) {
         openSubmission(state.selectedSubmission.id);
@@ -364,11 +383,13 @@ function connectHackathonStream(hid) {
       } catch {}
       if (state.currentHackathon && state.currentHackathon.id === hid) {
         renderActiveHackathonOverview(state.currentHackathon);
+        refreshCurrentDashboardIfActive();
       }
     });
     currentHackathonStream.addEventListener('score_updated', () => {
       if (state.currentHackathon && state.currentHackathon.id === hid) {
         renderActiveHackathonOverview(state.currentHackathon);
+        refreshCurrentDashboardIfActive();
       }
     });
     currentHackathonStream.addEventListener('submission_error', (e) => {
@@ -378,7 +399,21 @@ function connectHackathonStream(hid) {
       } catch {}
       if (state.currentHackathon && state.currentHackathon.id === hid) {
         renderActiveHackathonOverview(state.currentHackathon);
+        refreshCurrentDashboardIfActive();
       }
+    });
+    currentHackathonStream.addEventListener('hackathon_status_updated', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (state.currentHackathon && state.currentHackathon.id === d.id) {
+          state.currentHackathon = { ...state.currentHackathon, ...d };
+          updateSubmissionToggleUI(d.is_open);
+        }
+        const idx = state.hackathons.findIndex(x => x.id === d.id);
+        if (idx !== -1) {
+          state.hackathons[idx] = { ...state.hackathons[idx], ...d };
+        }
+      } catch {}
     });
   } catch (err) {
     console.warn('SSE stream error:', err);
@@ -404,6 +439,97 @@ window.reevaluateProject = async function(id) {
     toast(err.message, 'error');
   }
 };
+
+function updateSubmissionToggleUI(isOpen) {
+  const open = isOpen !== false && isOpen !== 0 && isOpen !== '0';
+
+  // Hero overview badge
+  const badge = $('#active-hack-status-badge');
+  if (badge) {
+    if (open) {
+      badge.classList.remove('status-closed');
+      badge.innerHTML = '<i class="pulse-dot"></i> SUBMISSIONS OPEN';
+    } else {
+      badge.classList.add('status-closed');
+      badge.innerHTML = '<i class="pulse-dot"></i> SUBMISSIONS CLOSED';
+    }
+  }
+
+  // Hero overview toggle button
+  const heroBtnIcon = $('#btn-toggle-sub-icon');
+  const heroBtnText = $('#btn-toggle-sub-text');
+  const heroBtn = $('#btn-toggle-submissions');
+  if (heroBtn && heroBtnIcon && heroBtnText) {
+    if (open) {
+      heroBtnIcon.textContent = '⛔';
+      heroBtnText.textContent = 'Stop Submissions';
+      heroBtn.title = 'Stop accepting submissions for this hackathon';
+      heroBtn.style.color = '#ef4444';
+      heroBtn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+    } else {
+      heroBtnIcon.textContent = '▶';
+      heroBtnText.textContent = 'Resume Submissions';
+      heroBtn.title = 'Resume accepting submissions for this hackathon';
+      heroBtn.style.color = 'var(--teal-light)';
+      heroBtn.style.borderColor = 'var(--teal-border)';
+    }
+  }
+
+  // Dashboard toggle button
+  const dashBtnIcon = $('#dash-toggle-sub-icon');
+  const dashBtnText = $('#dash-toggle-sub-text');
+  const dashBtn = $('#dashboard-toggle-submissions');
+  if (dashBtn && dashBtnIcon && dashBtnText) {
+    if (open) {
+      dashBtnIcon.textContent = '⛔';
+      dashBtnText.textContent = 'Stop Submissions';
+      dashBtn.title = 'Stop accepting submissions for this hackathon';
+      dashBtn.style.color = '#ef4444';
+      dashBtn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+    } else {
+      dashBtnIcon.textContent = '▶';
+      dashBtnText.textContent = 'Resume Submissions';
+      dashBtn.title = 'Resume accepting submissions for this hackathon';
+      dashBtn.style.color = 'var(--teal-light)';
+      dashBtn.style.borderColor = 'var(--teal-border)';
+    }
+  }
+}
+
+async function toggleHackathonSubmissions(hackathonId) {
+  if (!hackathonId) {
+    if (state.currentHackathon) hackathonId = state.currentHackathon.id;
+    else return;
+  }
+  const current = state.hackathons.find(x => x.id === hackathonId) || state.currentHackathon;
+  const isCurrentlyOpen = current ? (current.is_open !== false && current.is_open !== 0 && current.is_open !== '0') : true;
+  const actionMsg = isCurrentlyOpen
+    ? 'Are you sure you want to STOP accepting submissions for this event?\n\nStudents attempting to submit past this deadline will be rejected.'
+    : 'Are you sure you want to RESUME accepting submissions for this event?\n\nStudents will be able to submit their projects again.';
+
+  if (!confirm(actionMsg)) return;
+
+  try {
+    toast(`${isCurrentlyOpen ? 'Stopping' : 'Resuming'} submissions...`, 'info');
+    const { data } = await api(`/api/hackathons/${hackathonId}/toggle-submissions`, {
+      method: 'POST',
+      body: JSON.stringify({ is_open: !isCurrentlyOpen })
+    });
+
+    const newIsOpen = Boolean(data.is_open);
+    if (state.currentHackathon && state.currentHackathon.id === hackathonId) {
+      state.currentHackathon.is_open = newIsOpen;
+    }
+    const idx = state.hackathons.findIndex(x => x.id === hackathonId);
+    if (idx !== -1) {
+      state.hackathons[idx].is_open = newIsOpen;
+    }
+    updateSubmissionToggleUI(newIsOpen);
+    toast(newIsOpen ? 'Submissions resumed! Participants can now submit.' : 'Submissions stopped! Deadline enforced.', 'success', 5000);
+  } catch (err) {
+    toast(`Failed to update submission status: ${err.message}`, 'error', 6000);
+  }
+}
 
 async function switchActiveHackathon(id) {
   const h = state.hackathons.find(x => x.id === id);
@@ -547,6 +673,7 @@ async function renderActiveHackathonOverview(h) {
   $('#active-hack-track').textContent = h.track || 'Open Innovation';
   $('#active-hack-id').textContent = `ID #${h.id}`;
   $('#active-hack-desc').textContent = h.description || 'Evaluation workspace for automated code analysis, transparent scoring, and judge decisions.';
+  updateSubmissionToggleUI(h.is_open);
 
   // Fetch Submissions for active hackathon
   try {
@@ -744,6 +871,7 @@ function renderDashboard() {
   $('#dash-assessed').textContent = s.filter(x => x.status === 'EVALUATED').length;
   $('#dash-top').textContent = s.length && s[0].score !== null ? Number(s[0].score).toFixed(1) : '—';
   $('#dash-overrides').textContent = '…';
+  updateSubmissionToggleUI(h.is_open);
   $('#submission-list').innerHTML = s.map((x, i) => {
     const score = x.score === null || x.score === undefined ? '—' : Number(x.score).toFixed(1);
     const method = x.assessment_method || 'pending';

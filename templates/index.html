@@ -95,7 +95,7 @@
         <div class="active-hackathon-hero" id="active-hackathon-hero">
           <div class="hero-left">
             <div class="hero-badge-row">
-              <span class="event-live-badge"><i class="pulse-dot"></i> ACTIVE HACKATHON</span>
+              <span class="event-live-badge" id="active-hack-status-badge"><i class="pulse-dot"></i> SUBMISSIONS OPEN</span>
               <span class="track-tag" id="active-hack-track">Open Innovation</span>
               <span class="meta-tag" id="active-hack-id">ID #1</span>
             </div>
@@ -113,6 +113,9 @@
           </div>
           <div class="hero-right">
             <div class="hero-action-buttons">
+              <button class="button button-secondary" id="btn-toggle-submissions" title="Stop or resume accepting submissions for this hackathon">
+                <span id="btn-toggle-sub-icon">⛔</span> <span id="btn-toggle-sub-text">Stop Submissions</span>
+              </button>
               <button class="button button-primary" id="btn-quick-submit">+ Add Project</button>
               <button class="button button-secondary" id="btn-quick-batch">Batch CSV Review</button>
               <button class="button button-ghost" id="btn-copy-student-link" title="Copy shareable link for participants">🔗 Share Portal</button>
@@ -632,6 +635,9 @@
             <p id="dashboard-description" class="muted"></p>
           </div>
           <div class="dashboard-title-actions">
+            <button class="button button-secondary" id="dashboard-toggle-submissions" title="Stop or resume accepting submissions for this hackathon">
+              <span id="dash-toggle-sub-icon">⛔</span> <span id="dash-toggle-sub-text">Stop Submissions</span>
+            </button>
             <button class="button button-secondary" id="dashboard-copy-link" title="Copy shareable link for participants">🔗 Share Link</button>
             <button class="button button-primary" id="dashboard-submit">+ Add Submission</button>
             <button class="button button-danger" id="dashboard-delete">Delete Event</button>
